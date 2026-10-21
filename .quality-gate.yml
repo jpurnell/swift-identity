@@ -1,0 +1,44 @@
+# `excludedCheckers`/`enabledCheckers`, not `exclude`/`checkers`. The scaffolder still
+# writes the superseded names, which this gate silently ignores — so the file describes a
+# checker selection that never runs, and the gate reports it only as an advisory note.
+# Corrected at creation; a survey on 2026-08-25 found 11 of 73 repositories with the old
+# keys. Not `excludePatterns`, which the gate's own "did you mean" suggests: that key holds
+# file globs, so taking the suggestion turns a checker name into a pattern matching nothing.
+excludedCheckers:
+  - disk-clean
+
+enabledCheckers:
+  - all
+  - logging
+
+docTarget: SwiftIdentity
+
+# The scaffolder does not write this, so the status auditor looks for a master plan inside
+# development-guidelines/ — the framework's directory, not the project's — finds none, and
+# skips silently. A checker that skips is not a checker that passed.
+status:
+  guidelinesPath: "."
+  masterPlanPath: project/master_plan.md
+
+# The corpus stays named, and the path is relative rather than absolute.
+#
+# Relative because an absolute one encoded a home directory and a Dropbox layout that is true
+# on exactly one machine. Named at all because the alternative is deleting the block, and a
+# consistency checker with no corpus does not fail — it skips, and a checker that skips is not
+# a checker that passed. This is the one reference to a sibling repository left in the package,
+# it is build tooling rather than product, and it resolves to a checkout beside this one.
+#
+# If this package is ever made public, this block is what to revisit: drop it and lose the
+# checker, or keep the checker and disclose that a private corpus exists.
+consistency:
+  corpusPath: ../org-judgement-corpus
+  projectID: SwiftIdentity
+  consistencyThreshold: 0.7
+  defaultRiskTier: 2
+
+ijs:
+  projectID: "SwiftIdentity"
+  corpusPath: "../org-judgement-corpus"
+  decisionOwner: "jpurnell"
+  defaultRiskTier: 2
+  remoteURL: "git@github.com:jpurnell/org-judgement-corpus.git"
