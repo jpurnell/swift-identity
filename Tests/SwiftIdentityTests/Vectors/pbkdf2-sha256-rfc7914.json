@@ -1,0 +1,23 @@
+{
+  "source": "https://www.rfc-editor.org/rfc/rfc7914.txt",
+  "section": "11. Test Vectors for PBKDF2 with HMAC-SHA-256",
+  "sourceSha256": "df55932f8b6a5d271f36a634d91a25903724e189ba6c120bf7257cd47f10b197",
+  "retrieved": "2026-10-22",
+  "encoding": "password and salt are ASCII strings; dk is lowercase hex",
+  "vectors": [
+    {
+      "password": "passwd",
+      "salt": "salt",
+      "iterations": 1,
+      "dkLen": 64,
+      "dk": "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783"
+    },
+    {
+      "password": "Password",
+      "salt": "NaCl",
+      "iterations": 80000,
+      "dkLen": 64,
+      "dk": "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d"
+    }
+  ]
+}

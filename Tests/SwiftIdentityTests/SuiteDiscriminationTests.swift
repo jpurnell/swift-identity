@@ -32,7 +32,8 @@ struct SuiteDiscriminationTests {
             active: .init(
                 id: "ada",
                 credential: BearerKey("active-secret"),
-                attributes: ["site": "north-house"]
+                attributes: ["site": "north-house"],
+                algorithm: "reference-sha256"
             ),
             refusals: .init(
                 revoked: BearerKey("former-member-secret"),
@@ -45,9 +46,14 @@ struct SuiteDiscriminationTests {
                 otherSubject: BearerKey("grace-secret"),
                 threshold: 3
             ),
-            externalForActiveSubject: ExternalAssertion(.init(issuer: "https://issuer.test/", subject: "abc"))
+            externalForActiveSubject: ExternalAssertion(.init(issuer: "https://issuer.test/", subject: "abc")),
+            canonicalPassphrase: Self.composedPassphrase
         )
     }
+
+    /// The active subject's passphrase, with "é" as one code point. The suite presents it
+    /// decomposed as well, and both must resolve.
+    private static let composedPassphrase = Passphrase(subjectID: "ada", secret: "caf\u{E9} au lait")
 
     private static func referenceStore() -> ReferenceCredentialStore {
         ReferenceCredentialStore(
@@ -59,6 +65,7 @@ struct SuiteDiscriminationTests {
                 (CapabilityToken("leaked-share-link"), "retired-agent", nil),
                 (SessionToken("stale-session"), "ada", past),
                 (BearerKey("grace-secret"), "grace", nil),
+                (composedPassphrase, "ada", nil),
             ],
             throttle: ThrottlePolicy(threshold: 3, backoff: 60),
             now: { present }
@@ -175,6 +182,35 @@ struct SuiteDiscriminationTests {
         }
     }
 
+    /// Compares a passphrase byte for byte: 0.6.x's defect, the one the amendment fixes.
+    private struct HashesRawPassphrases: CredentialStore {
+        func resolve(_ credential: any Credential) async -> Resolution {
+            if let key = credential as? BearerKey, key.value == "active-secret" {
+                return .verified(SuiteDiscriminationTests.ada)
+            }
+            // The defect: scalars compared exactly, so a decomposed "é" is a different passphrase.
+            if let passphrase = credential as? Passphrase, passphrase.subjectID == "ada",
+               Array(passphrase.secret.unicodeScalars) == Array(SuiteDiscriminationTests.composedPassphrase.secret.unicodeScalars) {
+                return .verified(SuiteDiscriminationTests.ada)
+            }
+            return .refused(.unknown)
+        }
+
+        func resolveVerifying(_ credential: any Credential) async -> (Resolution, algorithm: String?) {
+            (await resolve(credential), algorithm: "reference-sha256")
+        }
+    }
+
+    /// Resolves correctly but never says what it verified with.
+    private struct ReportsNoAlgorithm: CredentialStore {
+        func resolve(_ credential: any Credential) async -> Resolution {
+            if let key = credential as? BearerKey, key.value == "active-secret" {
+                return .verified(SuiteDiscriminationTests.ada)
+            }
+            return .refused(.unknown)
+        }
+    }
+
     /// Answers every attempt, however many have failed.
     private actor NeverThrottles: CredentialStore {
         func resolve(_ credential: any Credential) async -> Resolution {
@@ -197,6 +233,32 @@ struct SuiteDiscriminationTests {
             failures += 1
             return .refused(.unknown)
         }
+    }
+
+    @Test("a store that compares passphrases byte for byte is caught")
+    func catchesRawPassphrases() async {
+        let report = await ConformanceSuite(store: HashesRawPassphrases(), fixtures: Self.fixtures()).run()
+        #expect(Set(report.failures.map(\.requirement)).contains(.canonicallyEquivalentPassphrasesMatch))
+    }
+
+    @Test("a store that reports no algorithm is caught, when it claims to record them")
+    func catchesMissingAlgorithm() async {
+        let report = await ConformanceSuite(store: ReportsNoAlgorithm(), fixtures: Self.fixtures()).run()
+        #expect(Set(report.failures.map(\.requirement)).contains(.algorithmIsReported))
+    }
+
+    @Test("claiming a capability without its fixture is inconclusive, not a pass")
+    func claimedWithoutFixtureIsAGap() async {
+        let bare = ConformanceSuite.Fixtures(
+            capabilities: [.canonicalPassphrases, .algorithmRecords],
+            active: .init(id: "ada", credential: BearerKey("active-secret")),
+            refusals: Self.fixtures().refusals
+        )
+        let report = await ConformanceSuite(store: Self.referenceStore(), fixtures: bare).run()
+        let inconclusive = Set(report.inconclusive.map(\.requirement))
+        #expect(inconclusive.contains(.canonicallyEquivalentPassphrasesMatch))
+        #expect(inconclusive.contains(.algorithmIsReported))
+        #expect(!report.isConformant)
     }
 
     @Test("a store that accepts anything fails every refusal requirement")
@@ -250,6 +312,7 @@ struct SuiteDiscriminationTests {
         // Throttling too: a store that refuses everything refuses the sixth attempt exactly as
         // it refused the first, which says nothing about whether it throttles.
         #expect(inconclusive.contains(.throttlingAfterRepeatedFailure))
+        #expect(inconclusive.contains(.canonicallyEquivalentPassphrasesMatch))
         #expect(!report.isConformant)
     }
 
@@ -259,7 +322,7 @@ struct SuiteDiscriminationTests {
         #expect(Set(report.failures.map(\.requirement)).contains(.honeypotIsReportedToTheService))
     }
 
-    @Test("an implementer cannot leak the refusal reason, even by trying")
+    @Test("P18: an implementer cannot leak the refusal reason, even by trying")
     func reasonCannotLeak() async {
         // `LeaksTheReason` declares its own `subject(for:)` that hands back the honeypot
         // subject. Through the protocol it never runs: the accessor lives only in an extension,

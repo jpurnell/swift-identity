@@ -19,8 +19,14 @@ let package = Package(
     //
     // 14 rather than 10.15: every consumer is a macOS 14 service, and a floor lower
     // than anything that uses it is a claim nobody checks.
+    //
+    // iOS 17 and visionOS 1 since 0.7.0, to match SwiftCLIKit, the first consumer that runs on
+    // them; both were built before being declared. Their Swift runtimes carry Unicode 15.0,
+    // which is why the passphrase canonicalization is pinned there.
     platforms: [
         .macOS(.v14),
+        .iOS(.v17),
+        .visionOS(.v1),
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -82,6 +88,9 @@ let package = Package(
                 "SwiftIdentityConformance",
                 .product(name: "SwiftDeterminism", package: "SwiftDeterminism"),
             ],
+            // Read by path from the test sources' own directory, not bundled: they're the
+            // reference the tests are checked against, and a bundle copy could go stale.
+            exclude: ["Requirements", "Vectors"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

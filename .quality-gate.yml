@@ -42,3 +42,10 @@ ijs:
   decisionOwner: "jpurnell"
   defaultRiskTier: 2
   remoteURL: "git@github.com:jpurnell/org-judgement-corpus.git"
+# The package's one subprocess kernel. It lives in the tests because the only process this
+# package spawns is the test runner relaunching itself for the two-process ledger race
+# (`ThrottleLedgerTests`); the library spawns nothing. Declared rather than defaulted: the
+# default names a file in the gate's own sources, which this repository doesn't have, so a
+# correct kernel here would otherwise be reported as a spawn outside it.
+boundedIO:
+  kernelPath: Tests/SwiftIdentityTests/ProcessRunner.swift

@@ -1,5 +1,7 @@
 .DS_Store
 /.build
+# The verification harnesses are packages of their own, with their own build directories.
+Harness/*/.build
 /Packages
 xcuserdata/
 DerivedData/

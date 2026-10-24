@@ -9,6 +9,251 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.0] — 2026-10-23
+
+The assurance and passphrase amendment (`AssuranceFactorsAndStandardPassphrases.md`, approved
+2026-10-22, revision 4): several factors proving one subject, passphrases to NIST SP 800-63B-4
+as published, one-time codes, and a failure ceiling shared across processes and hosts. 372 tests.
+
+### Added
+
+- **`PassphraseCanonicalization`**: NIST SP 800-63B-4's normalization, the stabilized-strings
+  process of UAX #15 §12.1 with NFC. Code points unassigned in Unicode 15.0 (the pin) and control
+  characters are refused, by position, never stripped. No case mapping, no trimming. Checked
+  against all 19,074 cases of Unicode's `NormalizationTest.txt` for 15.0 and 20,000 seeded cases
+  from CPython's `unicodedata`.
+- **`PassphraseScheme`, `PassphraseSchemes`, `PBKDF2SHA256C1`, `PBKDF2SHA256Legacy`**: digests
+  are versioned by scheme, and a deployment can add its own. A scheme derives; the constant-time
+  comparison stays in `PassphraseVerifier`.
+- **`PassphrasePolicy`**, with the `nist80063B4` and `fips` profiles: NIST SP 800-63B-4's rules for
+  choosing a passphrase, applied at issuance only. 15 code points as a sole factor, 8 as part of
+  multi-factor, at most 256; a 1 KiB byte cap checked before anything else; every violation named,
+  including which blocklist refused it (NIST requires the reason). No composition rule can be
+  expressed. `guidance` gives the advice NIST requires verifiers to offer, and `after(_:)` the advice
+  for a particular rejection.
+- **`PassphrasePolicy.pciDSS4`**: PCI DSS 4.0.1 §8.3.6, at least 12 characters with both a letter
+  and a digit (any script). **For PCI deployments only, and not recommended under NIST SP
+  800-63B-4**, which forbids composition rules. `appliesPCIComposition` is read-only, so no NIST or
+  FIPS profile can be made to apply it; the new violation `.pciRequiresLettersAndDigits` is only
+  ever reported by this profile. Lockout (§8.3.4) and 90-day change (§8.3.9) are left to
+  `ThrottlePolicy` and the deployment, against the standard's own text.
+- **Blocklists:** `PassphraseBlocklist` (whole-password comparison, may throw), `ContextWords` (the
+  subject's and service's names and their derivatives), `CommonPasswords` and
+  `BundledCommonPasswords`: SecLists' 10,000 most common passwords, MIT licensed, imported by
+  `scripts/import-common-passwords.py` with provenance in `Resources/COMMON-PASSWORDS.md`. A
+  blocklist that can't answer refuses the passphrase (`blocklistUnavailable`) rather than being
+  skipped. `foldsCompatibilityForBlocklist` optionally also compares an NFKC-folded copy.
+- **`BreachedPasswordRange`**: passwords "obtained from previous breach corpuses" (800-63B-4
+  §3.1.1.2), by k-anonymity range lookup over Have I Been Pwned's Pwned Passwords API or a
+  compatible service. SHA-1 of the canonical passphrase (the protocol's choice); only the 5-hex
+  prefix is sent, the 35-hex suffix is matched locally, and `Add-Padding: true` is requested, with
+  count-0 padding never a match. `minimumCount` sets the fewest sightings. The transport is
+  injected; `urlSession(timeout:)` requires a timeout. A non-200 status, a malformed line, a body
+  over 2 MiB or a transport error throws, so the policy refuses as `blocklistUnavailable(.breached)`;
+  `failsOpen` is the documented opt-in alternative. Off by default: neither profile includes it.
+- **Factors and assurance:** `FactorClass` (knowledge, possession, inherence), declared per
+  credential kind through `Credential.factorClass` and `isPhishingResistant`, both requirements
+  with defaults; `Assurance` (single-factor, multi-factor, phishing-resistant), always computed;
+  `VerifiedFactor`, `Authentication`, `AuthenticationResolution`.
+- **`Authenticator`**: resolves several credentials through the first store that recognizes each,
+  requires one subject, and computes assurance. `authentication(for:)` is the caller's view, an
+  `Authentication` or nil.
+- **`CredentialStore.resolveVerifying(_:)`**: a requirement with a default that reports the
+  algorithm a store verified with. Every existing store compiles unchanged and reports none.
+- **`IdentityEvent.algorithm`**, optional, defaulting to nil.
+- **One-time codes (RFC 6238 TOTP):** `OneTimeCode` (possession, not phishing-resistant),
+  `OneTimeCodeParameters` (HMAC-SHA-1, 6 digits, 30 s by default; SHA-256/512 and 8 digits
+  selectable; recorded as `totp-sha1-6-30`), and `OneTimeCodeVerifier`: a 160-bit key from the
+  caller's generator, sealed at rest under a `SealingKey` (AES-256-GCM, a 32-byte owner-only file
+  held apart from the store) and bound to its subject. `matchingStep(_:at:sealingKey:window:)`
+  checks ±1 step in constant time; `enrollmentURI(issuer:account:sealingKey:)` is the
+  `otpauth://` URI an app scans. Checked against RFC 6238 Appendix B (all 18 vectors) and RFC
+  4648 §10 (Base32), imported by `import-totp.py`. Accepting each code once, and the failure
+  ceiling, arrive with the ledger.
+- **Conformance:** two requirements, `canonicallyEquivalentPassphrasesMatch` and
+  `algorithmIsReported`, with capabilities `.canonicalPassphrases` and `.algorithmRecords` (both
+  in `.all`) and fixtures `canonicalPassphrase` and `ActiveSubject.algorithm`. A capability
+  claimed without its fixture is inconclusive, so it can't pass by omission. Each requirement has
+  a mutant the suite is shown to catch. `ReferenceCredentialStore` canonicalizes passphrases and
+  reports `reference-sha256`.
+- **`FileCredentialStore` verifies one-time codes**: `totp` lines in the verifiers file, opened
+  with a `sealingKey:` given at init. Each attempt is counted before it's checked, a matching
+  code is accepted only if its step is later than the last one used (`ThrottleLedger.consume`,
+  through the new `FailureThrottle.consume(step:for:)`, which fails closed), and the app is
+  disabled at the ceiling under its own `ThrottleKey.oneTimeCode(subjectID:verifiers:)`, so
+  enrolling a new app rebinds it. Startup-fatal: `totp` lines with no sealing key, no throttle,
+  a sealing key that doesn't open a line (named), or a malformed line.
+- **`FileCredentialStore.resolveVerifying(_:)`** reports what it verified with, from the record:
+  the passphrase scheme, the one-time-code parameters, or `sha256`. Every audit event for a
+  verification carries it.
+- **Authenticators presented together are disabled together** (NIST SP 800-63B-4 §3.2.2):
+  `Authenticator(…, throttle:)` checks every credential in a set, so each throttled one is counted,
+  and when any is disabled it disables all of them through `FailureThrottle.disableTogether(_:)`
+  (a new `ThrottleLedger` requirement, atomic in both ledgers; it fails closed). Stores say which
+  key a credential counts under through `ThrottlingCredentialStore`, which `FileCredentialStore`
+  adopts. `FailureThrottle.state(_:)` reads a key's state.
+- **`ThrottleLedgerConformance`**, in `SwiftIdentityConformance`: the bar any `ThrottleLedger` must
+  clear, black-box. Eleven requirements: counted before checked, backoff refuses uncounted, the
+  ceiling disables and stays disabled until rebound, a burst one below the ceiling admits exactly
+  one, concurrent attempts on two handles lose no count, one-time-code steps are a high-water
+  mark, disabling together, and (for a `.persistent` ledger) surviving a new handle. Both shipped
+  ledgers pass; each requirement has a broken ledger it is shown to catch.
+- **`ThrottleLedgerService` and `RemoteThrottleLedger`**: one host keeps the ledger and the others
+  reach it over HTTPS, so the ceiling is shared across hosts. The service is mounted by the
+  consumer's server (no socket here; TLS required), resolves each host's `BearerKey` on every
+  request (revocation is immediate), rate-limits per client, caps bodies (64 KiB), subject IDs,
+  authenticator names and keys per request, and refuses a time more than `maximumClockSkew`
+  (default 5 minutes) from its own clock. The remote ledger throws on any failure, so an
+  unreachable ledger host fails closed. It passes `ThrottleLedgerConformance`, over memory and
+  over a file ledger with restarts. `RemoteThrottleLedger.urlSession(url:key:timeout:)` requires
+  a positive timeout.
+- **`FileCredentialStore(…, schemes:)`**: the passphrase schemes a deployment accepts. Without
+  it, a deployment on the `owasp` profile would have written `argon2id-c1` lines its own store
+  refused at startup.
+- **`Pepper` and `PepperedScheme`** (P15): a verifier-only secret key, from the caller's generator,
+  in its own owner-only file, applied as HMAC-SHA-256 over any scheme's output. The identifier is
+  the base's plus `+p<fingerprint>`, so a digest names the pepper it needs and adding or rotating
+  one is reported by `needsUpgrade`. Not hardware-protected: a file, on every platform.
+- **`KeyFileFailure`**: the 32-byte, owner-only, never-overwritten rules the sealing key and the
+  pepper share. `SealingKey.Failure` is now an alias for it.
+- **`PassphraseVerifier.needsUpgrade(to:)`**, `scheme` and `parameters`, and
+  `init(for:using:parameters:schemes:)` / `init?(encoded:schemes:)`.
+- **`ThrottleLedger`, `ThrottleKey`, `ThrottleState`, `InMemoryThrottleLedger`,
+  `FileThrottleLedger`** (P13, P22): where `FailureThrottle` keeps its counts, keyed by subject
+  *and* authenticator. `FileThrottleLedger` is one owner-only file per host, every operation a
+  read-modify-rename under an `flock(2)` on a companion lock file, so every process on the host
+  shares one count; tested with two real processes racing. A permissive or unparseable ledger is
+  startup-fatal, like `FileCredentialStore`'s files. It writes only when the state changes.
+- **NIST's ceiling** (P13): `ThrottlePolicy.ceiling`, default 100, validated to `1...100` by a
+  new throwing `init(threshold:backoff:ceiling:)`. At the ceiling the authenticator is
+  disabled, and stays disabled through backoff expiry, successes and restarts, until rebound.
+  `FailureThrottle.recordFailure(involving:)` and `ThrottleLedger.recordFailure(involving:at:)`
+  disable every authenticator an attempt involved when one reaches it.
+- **`ThrottleKey.passphrase(subjectID:verifiers:)`**: a passphrase's key is derived from its
+  verifiers' salts, so issuing a new passphrase rebinds it with no ledger step to remember.
+  `ThrottleLedger.rebound(_:)` stays for explicit administrative use, and
+  `FileCredentialStore.throttleKey(forPassphraseOf:)` says which key to rebind.
+- **`ThrottleLedger.consume(step:for:)`**: an atomic high-water mark for one-time code steps,
+  a protocol requirement rather than a defaulted extension.
+- **`ThrottleLedger.beginAttempt(_:at:)` and `FailureThrottle.beginAttempt(_:)`** (P13): an
+  attempt is refused, or counted as a failure, in one atomic step *before* it is checked; only a
+  match is reported afterwards, with `recordSuccess`. Checking and then recording left the
+  derivation between two ledger operations, so a burst of guesses at 99 failures all passed the
+  check; now exactly one is admitted. A ledger write per admitted attempt, one more for a
+  success, none for a refusal.
+- `FailureThrottle.init(ledger:now:)` and key-based `shouldRefuse(_:)`, `recordFailure(_:)`,
+  `recordSuccess(_:)`.
+- **`Argon2id`**: RFC 9106 Argon2id (version 0x13) in pure Swift, on a pure-Swift BLAKE2b
+  (internal; swift-crypto has none). Lanes, four sync points, secret and associated data.
+  Parameters below RFC 9106's minimums or above the declared caps (1 GiB, 32 passes, 16 lanes)
+  are refused by name before any memory is allocated. Matches the RFC 9106 §5.3 tag and the
+  memory words it prints after each pass, and 64 seeded differential cases from OpenSSL's
+  independent `ARGON2ID` KDF (`Harness/Argon2id/`, never a dependency). BLAKE2b is checked
+  against RFC 7693 Appendix A and the official BLAKE2 known answers.
+- **`Argon2idC1`**: the `argon2id-c1` scheme, Argon2id over the canonical secret with parameters
+  stored as `m=<KiB>,t=<passes>,p=<lanes>`. **Not in `PassphraseSchemes.standard`**, which still
+  refuses it. `isBelowCurrentCost` compares against OWASP's minimum, so a digest with m < 19456
+  KiB or t < 2, or parameters that don't decode, is re-derived at the next sign-in.
+- **The amendment's Argon2id gate (§9) passes.** Beyond the RFC 9106 vector and the 64 OpenSSL
+  cases:
+  - **phc-winner-argon2**, the reference, through its `argon2` CLI (Homebrew 20190702_1):
+    `Harness/Argon2id/generate-phc.py` refuses to run unless the CLI first reproduces all 24
+    OpenSSL cases it can express, then writes 52 seeded cases, 2 each at m=19456 t=2 p=1 and
+    m=65536 t=3 p=4. All 52 match (`argon2id-phc-winner-argon2.txt`).
+  - **`mimiclone/argon2-swift`**, pure Swift with its own BLAKE2b, wrapping no C: built by its
+    own harness package, `Harness/Argon2idSwift`, pinned to revision `0f6581ee` (v1.0.4) and
+    never a dependency. It must reproduce RFC 9106 §5.3 first; then 52 seeded cases, secrets and
+    associated data among them, 2 each at the same deployment parameters. All 52 match
+    (`argon2id-argon2-swift.txt`).
+  - **Timing within 2× of the reference**, release build, CPU time, on an M1 Max under heavy
+    load: 1.45× at m=19456 t=2 p=1 (36.3 ms against 25.0 ms) and 1.38× at m=65536 t=3 p=4
+    (194.8 ms against 141.0 ms). `Harness/Argon2idTiming` measures it; `Harness/Argon2id/TIMING.md`
+    records the machine, date and method. Measured on arm64 only; the deploy host is x86_64.
+- **`PassphrasePolicy.owasp`**: NIST SP 800-63B-4's rules, every one the same as `nist80063B4`'s,
+  with the derivation `argon2id-c1` at OWASP's recommended minimum, m=19456 KiB, t=2, p=1. It
+  accepts `pbkdf2-sha256`, `pbkdf2-sha256-c1` and `argon2id-c1`, so existing digests verify and
+  upgrade. Opt-in: OWASP's first choice, not on NIST's list (800-63B-4 names SP 800-132, which is
+  PBKDF2). Never part of `nist80063B4` or `fips`, and **PBKDF2 stays the default.**
+
+### Testing
+
+- **Mutation testing**, by a harness written here (`Harness/Mutation/`, stdlib Python, seeded): up
+  to 25 mutants per file across the verifier, schemes, canonicalization, Authenticator, ledgers,
+  Argon2id, BLAKE2b, one-time codes and policy. Of 54 survivors, 32 were test gaps, now closed
+  (among them: `PassphraseVerifier.==` had no test; a throttle key that hashed only the salt's
+  length would have let a reissued passphrase inherit the old count; the ledger's entry limit
+  was untested); 18 are equivalent and 4 need fault injection, each explained in `REPORT.md`.
+  No product bug.
+
+### Documentation
+
+- Articles: **Passphrase standards** (each NIST rule and where it lives, the profiles, the
+  corrections the published text forced), **Signing in with several factors** (enrolling an app,
+  verifying a passphrase and a code), **Extending SwiftIdentity** (what a store, scheme or ledger
+  must pass), and **Threat model** (guessing, factors, secrets at rest, the shared ledger, quantum
+  posture). The catalogue's front page said "Nothing is implemented yet" through six releases; it
+  now organizes every public type.
+
+### Changed
+
+- **iOS 17 and visionOS 1 are declared platforms**, beside macOS 14, to match SwiftCLIKit. Both
+  were built before being declared.
+
+- **New passphrase digests are `pbkdf2-sha256-c1`**, over the canonical secret, so "é" typed as
+  one code point or two matches either way. Existing `pbkdf2-sha256` digests keep verifying,
+  byte for byte as before, and are never written again.
+- **An unknown scheme fails closed**: the stored value doesn't decode, which the file store
+  already treats as startup-fatal.
+- **`PassphraseVerifier.rounds` is now `Int?`**, read from the stored parameters; it's nil for a
+  scheme whose cost isn't a round count. Source-breaking for a caller that used it as `Int`.
+- `PassphraseVerifier.Failure` gains `.refused(_:)` and `.invalidParameters`.
+- **`Authenticator` no longer stops at the first refusal**: it checks every credential, then
+  refuses the set with the first refusal's reason. The answer is unchanged; the work isn't.
+- **`ThrottleLedger` gains `disableTogether(_:)`**, a requirement: a ledger written outside this
+  package must implement it.
+- **`IdentityEvent.Outcome` gains `.subjectMismatch`.** Source-breaking for an exhaustive `switch`
+  outside the package, accepted at 0.x (amendment §15.4). VaultMCP maps every outcome to a log
+  level and will need a line for it.
+- **`FailureThrottle` keeps its counts in a ledger, and its DocC records the reversal.** It
+  said the counter "does not survive a restart, deliberately" and is "per-process". Both are
+  quoted there and reversed for the ceiling: a per-process 100 is 300 across three instances,
+  and NIST requires disabling (§15.1). The default ledger is still in memory, so behaviour
+  below the ceiling is unchanged for a deployment that doesn't pass one.
+- **A ledger that throws refuses the attempt**, audited as `.throttled`, even for the right
+  passphrase. So is a disabled passphrase. The `Outcome` set is unchanged.
+- **`FileCredentialStore` counts a passphrase attempt before deriving it**, through
+  `beginAttempt`, rather than checking the throttle and recording the outcome afterwards.
+- **`FileCredentialStore` throttles by passphrase key, not by subject ID.** Every attempt naming
+  a subject with no passphrase counts under one fixed key, `ThrottleKey.unknownPassphrase`, so
+  naming strangers can't grow a ledger file.
+- `FailureThrottle.shouldRefuse(subjectID:)`, `recordFailure(subjectID:)` and
+  `recordSuccess(subjectID:)` are now `async`; they were actor-isolated, so callers already
+  awaited them.
+
+### Fixed
+
+- **The common-password list was a resource bundle, and SwiftPM's accessor stops the process when
+  the bundle isn't beside the binary.** A deployment copying only its executable would have
+  crashed at the first passphrase check; the gate's doc-run caught it when an article first
+  evaluated a policy. The list is now generated as Swift source and compiled in;
+  `CommonPasswords.bundled()` no longer throws, and the package ships no resources.
+
+- **A passphrase claiming a subject with none was refused without a derivation**, so its timing
+  said who had a passphrase. The amendment's P17 row asks for dummy work; the store now derives
+  against a verifier with the first stored passphrase's scheme and cost, so either refusal costs
+  the same. This reverses a comment that called the timing "already public by design".
+
+- **The work-factor tests measured wall-clock time**, and on a machine with a load average over a
+  hundred the gate caught one flipping fail→pass against an unchanged package. They now measure
+  the thread's CPU time, which counts only the derivation's own work.
+
+### Found
+
+- **Foundation's `precomposedStringWithCanonicalMapping` isn't NFC on its own.** It leaves a
+  precomposed Hangul LV syllable and a following trailing jamo apart ("가" + "ᆨ" should compose to
+  "각"), and missed a Tibetan reordering. Unicode's conformance file caught it. NFC here is
+  decomposition then composition, as UAX #15 defines it, which passes every case.
+
 ## [0.6.3] — 2026-10-21
 
 No API changes. The release that makes the package publishable.
@@ -318,7 +563,8 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.6.3...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.0
 [0.6.3]: https://github.com/jpurnell/swift-identity/releases/tag/0.6.3
 [0.6.2]: https://github.com/jpurnell/SwiftIdentity/releases/tag/0.6.2
 [0.6.1]: https://github.com/jpurnell/SwiftIdentity/releases/tag/0.6.1

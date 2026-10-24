@@ -116,3 +116,173 @@ struct FailureThrottleTests {
         #expect(await !throttle.shouldRefuse(subjectID: "grace"))
     }
 }
+
+/// The ceiling NIST puts on consecutive failures, and what happens when the ledger can't answer.
+@Suite("FailureThrottle — the ceiling")
+struct FailureThrottleCeilingTests {
+
+    typealias Clock = FailureThrottleTests.Clock
+
+    static let ada = ThrottleKey(subjectID: "ada", authenticator: "passphrase:0011223344556677")
+    static let adaCode = ThrottleKey(subjectID: "ada", authenticator: "totp")
+
+    private static func throttle(
+        threshold: Int = 5, backoff: TimeInterval = 60
+    ) -> (FailureThrottle, Clock) {
+        let clock = Clock()
+        let throttle = FailureThrottle(
+            policy: ThrottlePolicy(threshold: threshold, backoff: backoff),
+            now: { clock.now }
+        )
+        return (throttle, clock)
+    }
+
+    /// Fails `times` times, letting each backoff expire first, the way a patient guesser would.
+    private static func fail(
+        _ throttle: FailureThrottle, _ clock: Clock, _ key: ThrottleKey, times: Int
+    ) async throws {
+        for _ in 0..<times {
+            clock.advance(FailureThrottle.maximumBackoff + 1)
+            _ = try await throttle.recordFailure(key)
+        }
+    }
+
+    @Test("P13: the hundredth failure disables, and the refusal never expires")
+    func ceilingDisables() async throws {
+        let (throttle, clock) = Self.throttle()
+        try await Self.fail(throttle, clock, Self.ada, times: 99)
+
+        // Every backoff waited out: 99 consecutive failures are still below the ceiling.
+        clock.advance(FailureThrottle.maximumBackoff + 1)
+        #expect(await !throttle.shouldRefuse(Self.ada))
+
+        _ = try await throttle.recordFailure(Self.ada)
+        clock.advance(FailureThrottle.maximumBackoff * 1_000)
+        // Backoff ends by itself. Disabling, which §3.2.2 requires, doesn't.
+        #expect(await throttle.shouldRefuse(Self.ada))
+    }
+
+    @Test("P22: a success before the ceiling resets the count")
+    func successResets() async throws {
+        let (throttle, clock) = Self.throttle()
+        try await Self.fail(throttle, clock, Self.ada, times: 99)
+        try await throttle.recordSuccess(Self.ada)
+        try await Self.fail(throttle, clock, Self.ada, times: 99)
+
+        clock.advance(FailureThrottle.maximumBackoff + 1)
+        #expect(await !throttle.shouldRefuse(Self.ada))
+    }
+
+    @Test("P13: rebinding is the way back")
+    func reboundClears() async throws {
+        let ledger = InMemoryThrottleLedger()
+        let clock = Clock()
+        let throttle = FailureThrottle(ledger: ledger, now: { clock.now })
+        try await Self.fail(throttle, clock, Self.ada, times: 100)
+        #expect(await throttle.shouldRefuse(Self.ada))
+
+        await ledger.rebound(Self.ada)
+        #expect(await !throttle.shouldRefuse(Self.ada))
+    }
+
+    @Test("P13: several authenticators failing together are all disabled")
+    func severalInvolved() async throws {
+        let (throttle, clock) = Self.throttle()
+        try await Self.fail(throttle, clock, Self.ada, times: 99)
+
+        // One attempt involving both, and the passphrase reaches the ceiling: both are disabled,
+        // though the code had failed only once.
+        let states = try await throttle.recordFailure(involving: [Self.ada, Self.adaCode])
+        #expect(states.allSatisfy { $0.isDisabled })
+        #expect(await throttle.shouldRefuse(Self.adaCode))
+    }
+
+    @Test("P13: a ceiling is a policy, bounded by NIST's 100")
+    func ceilingIsValidated() throws {
+        #expect(ThrottlePolicy.standard.ceiling == 100)
+        #expect(try ThrottlePolicy(threshold: 5, backoff: 60, ceiling: 1).ceiling == 1)
+        #expect(try ThrottlePolicy(threshold: 5, backoff: 60, ceiling: 100).ceiling == 100)
+        // "No more than 100": a deployment may be stricter, never looser.
+        #expect(throws: ThrottlePolicy.Failure.ceilingOutOfRange(101)) {
+            try ThrottlePolicy(threshold: 5, backoff: 60, ceiling: 101)
+        }
+        #expect(throws: ThrottlePolicy.Failure.ceilingOutOfRange(0)) {
+            try ThrottlePolicy(threshold: 5, backoff: 60, ceiling: 0)
+        }
+    }
+
+    @Test("a stricter ceiling disables sooner")
+    func stricterCeiling() async throws {
+        let clock = Clock()
+        let policy = try ThrottlePolicy(threshold: 3, backoff: 60, ceiling: 10)
+        let throttle = FailureThrottle(policy: policy, now: { clock.now })
+        try await Self.fail(throttle, clock, Self.ada, times: 10)
+        clock.advance(FailureThrottle.maximumBackoff + 1)
+        #expect(await throttle.shouldRefuse(Self.ada))
+    }
+
+    /// Counts verifications that actually ran.
+    actor Verifications {
+        private(set) var count = 0
+        func ran() { count += 1 }
+    }
+
+    @Test("P13: concurrent attempts at 99 failures run exactly one verification, then disabled")
+    func burstAtTheCeiling() async throws {
+        let directory = try ThrottleLedgerTests.directory()
+        defer { ThrottleLedgerTests.remove(directory) }
+        let ledger = try FileThrottleLedger(url: directory.appendingPathComponent("throttle-ledger"))
+        let clock = Clock()
+        let throttle = FailureThrottle(ledger: ledger, now: { clock.now })
+        try await Self.fail(throttle, clock, Self.ada, times: 99)
+        clock.advance(FailureThrottle.maximumBackoff + 1)
+
+        // Twenty guesses at once. Checked-then-recorded, all twenty would pass the check before
+        // any was recorded: twenty verifications against a limit of one.
+        let verifications = Verifications()
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<20 {
+                group.addTask {
+                    guard await throttle.beginAttempt(Self.ada) else { return }
+                    await verifications.ran()      // a wrong guess: nothing more to report
+                }
+            }
+        }
+        #expect(await verifications.count == 1)
+        #expect(try await ledger.state(Self.ada).isDisabled)
+    }
+
+    // MARK: - Failing closed
+
+    /// A ledger that can never be reached: a full disk, a deleted file, a host that's down.
+    struct UnreachableLedger: ThrottleLedger {
+        struct Unreachable: Error {}
+
+        func recordFailure(_ key: ThrottleKey, at time: Date) async throws -> ThrottleState { throw Unreachable() }
+        func recordFailure(involving keys: [ThrottleKey], at time: Date) async throws -> [ThrottleState] {
+            throw Unreachable()
+        }
+        func beginAttempt(_ key: ThrottleKey, at time: Date) async throws -> Bool { throw Unreachable() }
+        func recordSuccess(_ key: ThrottleKey) async throws { throw Unreachable() }
+        func state(_ key: ThrottleKey) async throws -> ThrottleState { throw Unreachable() }
+        func rebound(_ key: ThrottleKey) async throws { throw Unreachable() }
+        func consume(step: Int64, for key: ThrottleKey) async throws -> Bool { throw Unreachable() }
+        func disableTogether(_ keys: [ThrottleKey]) async throws -> Bool { throw Unreachable() }
+    }
+
+    @Test("a ledger that can't disable together reports them disabled, failing closed")
+    func unreachableLedgerDisablesTogether() async {
+        let throttle = FailureThrottle(ledger: UnreachableLedger())
+        #expect(await throttle.disableTogether([ThrottleKey(subjectID: "ada", authenticator: "a")]))
+    }
+
+    @Test("a ledger that throws refuses the attempt")
+    func unreachableLedgerRefuses() async {
+        let throttle = FailureThrottle(ledger: UnreachableLedger())
+        // A throttle that fails open hands an attacker exactly the attempts it exists to deny:
+        // knock the ledger over, then guess freely.
+        #expect(await throttle.shouldRefuse(Self.ada))
+        #expect(await throttle.shouldRefuse(subjectID: "ada"))
+        #expect(await !throttle.beginAttempt(Self.ada))
+    }
+}

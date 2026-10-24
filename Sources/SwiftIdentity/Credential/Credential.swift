@@ -23,11 +23,35 @@ public protocol Credential: Sendable {
     /// records, which is why it is a name rather than a type identifier — a mangled Swift type
     /// name in a log is noise, and it changes when the type is moved.
     static var kind: String { get }
+
+    /// What kind of evidence this is. Defaults to ``FactorClass/possession``, which is what every
+    /// generated secret here is; ``Passphrase`` says ``FactorClass/knowledge``.
+    ///
+    /// A requirement with a default, not an extension member, so it's read through `any
+    /// Credential` correctly. An extension-only member would answer the default for every
+    /// existential, and assurance would be computed from the wrong class.
+    static var factorClass: FactorClass { get }
+
+    /// Whether the credential is bound to an origin or channel, so a phishing site can't relay
+    /// it. Defaults to false. A WebAuthn assertion is true.
+    static var isPhishingResistant: Bool { get }
 }
 
 extension Credential {
     /// This credential's kind, reachable from a value a store is already holding.
     public var kindName: String { Self.kind }
+
+    /// ``FactorClass/possession``.
+    public static var factorClass: FactorClass { .possession }
+
+    /// False.
+    public static var isPhishingResistant: Bool { false }
+
+    /// This credential's factor class, reachable from a value.
+    public var factorClassValue: FactorClass { Self.factorClass }
+
+    /// Whether this credential's kind is phishing-resistant, reachable from a value.
+    public var isPhishingResistantValue: Bool { Self.isPhishingResistant }
 }
 
 /// A generated key, presented in a header.
@@ -68,6 +92,8 @@ public struct CapabilityToken: Credential, Equatable {
 public struct Passphrase: Credential, Equatable {
     /// This kind's stable name.
     public static let kind = "passphrase"
+    /// Something the subject knows.
+    public static let factorClass = FactorClass.knowledge
     /// Who the passphrase claims to belong to.
     ///
     /// Carried because throttling is per-subject, and a wrong passphrase identifies nobody on

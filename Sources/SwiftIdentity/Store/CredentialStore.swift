@@ -17,31 +17,88 @@ public enum Resolution: Sendable, Equatable {
     case refused(IdentityEvent.Outcome)
 }
 
-/// How many failures a subject may accumulate before attempts are refused unchecked.
+/// How many failures a subject may accumulate before attempts are refused unchecked, and the
+/// ceiling at which an authenticator is disabled.
 ///
 /// Applies to ``Passphrase`` alone. Throttling a 256-bit
 /// generated key defends against nothing an attacker could ever exhaust, and buys a mechanism
 /// that can itself be used to deny service.
 ///
-/// **Backoff, not lockout.** A lockout is a denial-of-service primitive handed to anyone who
-/// knows a subject id — in a household, that is one person shutting another out of the boiler
-/// instructions.
+/// **Backoff, then a ceiling.** Below ``ceiling`` this is backoff, not lockout: a lockout is a
+/// denial-of-service primitive handed to anyone who knows a subject id — in a household, that
+/// is one person shutting another out of the boiler instructions. At the ceiling it is a
+/// lockout, because NIST SP 800-63B-4 §3.2.2 requires one: "no more than 100" consecutive
+/// failures, "by disabling that authenticator". That trade was decided on 2026-10-21 (§15.1 of
+/// the assurance amendment) and the risk it accepts is stated there.
 public struct ThrottlePolicy: Sendable, Equatable {
     /// Failures tolerated before refusing unchecked.
     public let threshold: Int
     /// How long a subject stays throttled once the threshold is crossed.
     public let backoff: TimeInterval
+    /// Consecutive failures at which the authenticator is disabled until it is rebound.
+    public let ceiling: Int
 
-    /// Creates a policy.
+    /// NIST's limit, and the default: "no more than 100" consecutive failures (§3.2.2).
+    public static let nistCeiling = 100
+
+    /// Why a policy was refused.
+    public enum Failure: Error, Equatable {
+        /// The ceiling was outside `1...100`. Above 100 is out of compliance; below 1 would
+        /// disable an authenticator before anyone had used it.
+        case ceilingOutOfRange(Int)
+    }
+
+    /// Creates a policy with NIST's ceiling of 100.
+    ///
+    /// - Parameters:
+    ///   - threshold: Failures tolerated before refusing unchecked.
+    ///   - backoff: The first penalty once the threshold is crossed; it doubles from there.
     public init(threshold: Int, backoff: TimeInterval) {
         self.threshold = threshold
         self.backoff = backoff
+        self.ceiling = Self.nistCeiling
+    }
+
+    /// Creates a policy with a ceiling of your own, no looser than NIST's.
+    ///
+    /// - Parameters:
+    ///   - threshold: Failures tolerated before refusing unchecked.
+    ///   - backoff: The first penalty once the threshold is crossed; it doubles from there.
+    ///   - ceiling: Consecutive failures that disable the authenticator, in `1...100`.
+    /// - Throws: ``Failure/ceilingOutOfRange(_:)``. Thrown rather than clamped: a deployment
+    ///   that asked for 200 and silently got 100 has a policy it never read.
+    public init(threshold: Int, backoff: TimeInterval, ceiling: Int) throws {
+        guard (1...Self.nistCeiling).contains(ceiling) else { throw Failure.ceilingOutOfRange(ceiling) }
+        self.threshold = threshold
+        self.backoff = backoff
+        self.ceiling = ceiling
     }
 
     /// Five attempts, then a minute — slow enough to make guessing pointless against a
     /// passphrase with any entropy, short enough that a person who mistyped theirs is not
-    /// locked out of their own house.
+    /// locked out of their own house. Disabled at 100.
     public static let standard = ThrottlePolicy(threshold: 5, backoff: 60)
+
+    /// When attempts may resume after this many consecutive failures, the latest at `time`, or
+    /// nil if none is owed.
+    ///
+    /// Doubles per failure past the threshold, capped at ``FailureThrottle/maximumBackoff``.
+    /// Shared by every ledger, so the arithmetic is written once.
+    ///
+    /// - Parameters:
+    ///   - failures: Consecutive failures, including the one just recorded.
+    ///   - time: When the latest one happened.
+    /// - Returns: The end of the backoff, or nil below the threshold.
+    public func refusedUntil(afterFailures failures: Int, at time: Date) -> Date? {
+        guard failures >= threshold else { return nil }
+        // `exceeding` is 0 on the attempt that crosses the threshold, so the first penalty is
+        // exactly the configured backoff. Capped at 32 doublings before the multiply, so the
+        // power can't overflow a Double into infinity.
+        let exceeding = failures - threshold
+        let multiplier = pow(2.0, Double(min(exceeding, 32)))
+        let delay = min(backoff * multiplier, FailureThrottle.maximumBackoff)
+        return time.addingTimeInterval(delay)
+    }
 }
 
 /// Resolves a presented proof to the subject it proves.
@@ -67,9 +124,23 @@ public struct ThrottlePolicy: Sendable, Equatable {
 public protocol CredentialStore: Sendable {
     /// Resolves a credential, reporting the reason to the service.
     func resolve(_ credential: any Credential) async -> Resolution
+
+    /// Resolves a credential and reports the algorithm the store verified it with.
+    ///
+    /// A requirement with a default, so every existing store keeps compiling and reports no
+    /// algorithm. Dynamically dispatched on purpose, unlike ``subject(for:)``: a store must be
+    /// able to say what it verified with. The algorithm comes from the store's own record (the
+    /// registered key, the stored scheme), never from the credential, which could claim any.
+    /// It reaches no caller: ``Authenticator`` folds it into ``Authentication``.
+    func resolveVerifying(_ credential: any Credential) async -> (Resolution, algorithm: String?)
 }
 
 extension CredentialStore {
+    /// ``resolve(_:)``, with no algorithm.
+    public func resolveVerifying(_ credential: any Credential) async -> (Resolution, algorithm: String?) {
+        (await resolve(credential), algorithm: nil)
+    }
+
     /// The subject a presented credential proves, or nil.
     ///
     /// What a consumer calls. The reason never crosses this line — which is why it lives in an
@@ -82,6 +153,17 @@ extension CredentialStore {
         guard case .verified(let subject) = await resolve(credential) else { return nil }
         return subject
     }
+}
+
+/// A store that throttles some credentials, and can say under which key.
+///
+/// ``Authenticator`` asks, so that an attempt presenting several throttled authenticators can
+/// disable them together when one reaches the ceiling (NIST SP 800-63B-4 §3.2.2). The key is
+/// for the throttle only; it says nothing about whether the credential is valid.
+public protocol ThrottlingCredentialStore: CredentialStore {
+    /// The key `credential`'s attempts are counted under, or nil for a kind this store doesn't
+    /// throttle.
+    func throttleKey(for credential: any Credential) async -> ThrottleKey?
 }
 
 /// Comparisons that do not finish early.

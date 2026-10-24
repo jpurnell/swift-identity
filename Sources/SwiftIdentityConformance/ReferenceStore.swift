@@ -62,6 +62,21 @@ public actor ReferenceCredentialStore: CredentialStore {
     /// together** so a value valid as one kind is not valid as another, then status, then
     /// expiry.
     public func resolve(_ credential: any Credential) async -> Resolution {
+        await resolveVerifying(credential).0
+    }
+
+    /// Resolves a credential and names the algorithm: `reference-sha256`, for every kind, since
+    /// this store holds a SHA-256 digest of each.
+    public func resolveVerifying(_ credential: any Credential) async -> (Resolution, algorithm: String?) {
+        let resolution = await check(credential)
+        guard case .verified = resolution else { return (resolution, algorithm: nil) }
+        return (resolution, algorithm: Self.algorithm)
+    }
+
+    /// What ``resolveVerifying(_:)`` reports.
+    public static let algorithm = "reference-sha256"
+
+    private func check(_ credential: any Credential) async -> Resolution {
         if let passphrase = credential as? Passphrase, isThrottled(passphrase.subjectID) {
             // Refused without checking the secret. Doing the comparison anyway would make the
             // throttle a suggestion rather than a limit.
@@ -137,8 +152,12 @@ public actor ReferenceCredentialStore: CredentialStore {
         case let session as SessionToken:   secret = session.value
         case let passphrase as Passphrase:
             // The subject is part of the digest, so one person's passphrase cannot authenticate
-            // as another even if they choose the same words.
-            secret = "\(passphrase.subjectID)|\(passphrase.secret)"
+            // as another even if they choose the same words. The secret is canonicalized first,
+            // as NIST requires; one that can't be is digested as given and matches nothing issued.
+            switch PassphraseCanonicalization.c1.canonicalize(passphrase.secret) {
+            case .success(let canonical): secret = "\(passphrase.subjectID)|\(canonical)"
+            case .failure: secret = "\u{0}uncanonicalizable:\(passphrase.subjectID)"
+            }
         case let assertion as ExternalAssertion:
             secret = "\(assertion.identity.issuer)|\(assertion.identity.subject)"
         default:

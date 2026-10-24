@@ -64,7 +64,7 @@ struct ConstantTimeTests {
         #expect(ConstantTime.equals([1, 2, 3, 4], [1, 2, 3, 4]))
     }
 
-    @Test("a difference anywhere is found, including in the last byte")
+    @Test("P17: a difference anywhere is found, including in the last byte")
     func differsAtEnd() {
         #expect(!ConstantTime.equals([1, 2, 3, 4], [1, 2, 3, 5]))
         #expect(!ConstantTime.equals([1, 2, 3, 4], [9, 2, 3, 4]))

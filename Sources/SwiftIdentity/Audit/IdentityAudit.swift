@@ -33,6 +33,11 @@ public struct IdentityEvent: Sendable, Equatable {
         case expired
         /// Refused without being checked, because too many attempts had failed recently.
         case throttled
+        /// Every credential presented together was valid, but they proved different subjects.
+        ///
+        /// Its own case rather than ``unknown`` (decided 2026-10-21): two valid credentials for
+        /// two people, presented together, is an attack signal, and the audit should say so.
+        case subjectMismatch
     }
 
     /// How it ended.
@@ -43,12 +48,17 @@ public struct IdentityEvent: Sendable, Equatable {
     public let credentialKind: String
     /// When, supplied by the caller so this package reads no clock.
     public let at: Date
+    /// The algorithm the store verified with, from the method's own registry (a passphrase
+    /// scheme, a COSE or SSH algorithm), when it says. What makes "who still signs in with a
+    /// classical key?" a query over the audit trail.
+    public let algorithm: String?
 
     /// Creates an audit event.
-    public init(outcome: Outcome, subjectID: String?, credentialKind: String, at: Date) {
+    public init(outcome: Outcome, subjectID: String?, credentialKind: String, at: Date, algorithm: String? = nil) {
         self.outcome = outcome
         self.subjectID = subjectID
         self.credentialKind = credentialKind
         self.at = at
+        self.algorithm = algorithm
     }
 }

@@ -562,4 +562,117 @@ struct FileCredentialStoreThrottlingTests {
         #expect(judged.count == 2)
         #expect(judged.allSatisfy { $0.verdict == .passed }, "\n\(report.summary)")
     }
+
+    // MARK: - The ceiling (P13)
+
+    @Test("P13: a disabled passphrase is refused unchecked, and audited as throttled")
+    func disabledPassphraseIsRefused() async throws {
+        let dir = try Self.seed(try Self.directory())
+        defer { Self.remove(dir) }
+
+        let ledger = InMemoryThrottleLedger()
+        let recorder = IdentityAuditTests.Recorder()
+        let store = try FileCredentialStore(
+            directory: dir, throttle: FailureThrottle(ledger: ledger), audit: recorder
+        )
+        let key = store.throttleKey(forPassphraseOf: "ada")
+        for _ in 0..<100 { _ = try await ledger.recordFailure(key, at: Date()) }
+
+        // The right passphrase, and still refused: disabled means the secret is never checked.
+        let right = Passphrase(subjectID: "ada", secret: "ada-secret")
+        #expect(await store.resolve(right) == .refused(.throttled))
+        let last = try #require(await recorder.events.last)
+        #expect(last.outcome == .throttled)
+        #expect(last.subjectID == "ada")
+
+        // Disabling one person's passphrase is not disabling everyone's.
+        #expect(await store.subject(for: Passphrase(subjectID: "grace", secret: "grace-secret"))?.id == "grace")
+    }
+
+    @Test("P13: concurrent guesses at 99 failures get one verification, and the rest are throttled")
+    func burstAtTheCeilingThroughTheStore() async throws {
+        let dir = try Self.seed(try Self.directory())
+        defer { Self.remove(dir) }
+
+        let ledger = InMemoryThrottleLedger()
+        let recorder = IdentityAuditTests.Recorder()
+        let store = try FileCredentialStore(
+            directory: dir, throttle: FailureThrottle(ledger: ledger), audit: recorder
+        )
+        let key = store.throttleKey(forPassphraseOf: "ada")
+        for _ in 0..<99 { _ = try await ledger.recordFailure(key, at: Date.distantPast) }
+
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<20 {
+                group.addTask { _ = await store.resolve(Passphrase(subjectID: "ada", secret: "guess")) }
+            }
+        }
+        // `.unknown` is the outcome of a guess that was checked; `.throttled`, of one that wasn't.
+        let outcomes = await recorder.events.map(\.outcome)
+        #expect(outcomes.filter { $0 == .unknown }.count == 1)
+        #expect(outcomes.filter { $0 == .throttled }.count == 19)
+        #expect(await ledger.state(key).isDisabled)
+    }
+
+    @Test("P13: issuing a new passphrase rebinds it")
+    func reissueRebinds() async throws {
+        let dir = try Self.seed(try Self.directory())
+        defer { Self.remove(dir) }
+        let ledgerURL = URL(fileURLWithPath: dir).appendingPathComponent("throttle-ledger")
+
+        let ledger = try FileThrottleLedger(url: ledgerURL)
+        let before = try FileCredentialStore(directory: dir, throttle: FailureThrottle(ledger: ledger))
+        let oldKey = before.throttleKey(forPassphraseOf: "ada")
+        for _ in 0..<100 { _ = try await ledger.recordFailure(oldKey, at: Date()) }
+        #expect(await before.resolve(Passphrase(subjectID: "ada", secret: "ada-secret")) == .refused(.throttled))
+
+        // An administrator issues a new passphrase: a new verifier, so a new salt. Nobody
+        // touches the ledger, and nobody has to remember to.
+        var generator = SplitMix64(seed: 99)
+        let reissued = try PassphraseVerifier(
+            for: Passphrase(subjectID: "ada", secret: "a new one entirely"),
+            using: &generator, rounds: PassphraseVerifier.roundFloor
+        )
+        let grace = try #require(
+            String(data: try Data(contentsOf: URL(fileURLWithPath: (dir as NSString)
+                .appendingPathComponent("verifiers"))), encoding: .utf8)?
+                .split(whereSeparator: \.isNewline).last.map(String.init)
+        )
+        try Self.write("""
+            ada     passphrase  \(reissued.encoded)    -
+            \(grace)
+            """, to: (dir as NSString).appendingPathComponent("verifiers"))
+
+        let after = try FileCredentialStore(
+            directory: dir, throttle: FailureThrottle(ledger: try FileThrottleLedger(url: ledgerURL))
+        )
+        #expect(after.throttleKey(forPassphraseOf: "ada") != oldKey, "a new passphrase is a new authenticator")
+        #expect(await after.subject(for: Passphrase(subjectID: "ada", secret: "a new one entirely"))?.id == "ada")
+        // The old entry is orphaned, still disabled, and refers to a passphrase that no longer
+        // exists anywhere.
+        #expect(try await ledger.state(oldKey).isDisabled)
+    }
+
+    @Test("a ledger that fails refuses even the right passphrase")
+    func failingLedgerRefuses() async throws {
+        let dir = try Self.seed(try Self.directory())
+        defer { Self.remove(dir) }
+
+        let store = try FileCredentialStore(
+            directory: dir, throttle: FailureThrottle(ledger: FailureThrottleCeilingTests.UnreachableLedger())
+        )
+        #expect(await store.resolve(Passphrase(subjectID: "ada", secret: "ada-secret")) == .refused(.throttled))
+    }
+
+    @Test("every subject without a passphrase shares one fixed key, so naming strangers can't grow the ledger")
+    func unknownSubjectsShareAKey() async throws {
+        let dir = try Self.seed(try Self.directory())
+        defer { Self.remove(dir) }
+
+        let store = try FileCredentialStore(directory: dir)
+        #expect(store.throttleKey(forPassphraseOf: "nobody") == ThrottleKey.unknownPassphrase)
+        #expect(store.throttleKey(forPassphraseOf: "stranger") == ThrottleKey.unknownPassphrase)
+        #expect(store.throttleKey(forPassphraseOf: "ada") != store.throttleKey(forPassphraseOf: "grace"))
+        #expect(store.throttleKey(forPassphraseOf: "ada").subjectID == "ada")
+    }
 }

@@ -23,13 +23,111 @@ header at all. Those are permanent properties of those clients, not gaps to clos
 capability URL, a bearer key, and an OAuth login must resolve to the *same* subject, or identity
 is only true on the web.
 
-That is the part OAuth cannot do alone, and the reason this is a package rather than a
-convention.
+### How strongly, not only who
+
+One credential proves a subject; several can prove it more strongly. ``Authenticator`` requires
+every credential presented together to prove the same subject, and computes the ``Assurance``
+from the factor classes that did — never from what a caller claims. Passphrases follow NIST SP
+800-63B-4, verified against the published text, and one-time codes from an authenticator app make
+"passphrase plus a code" multi-factor anywhere, a terminal included.
 
 ## Topics
 
-### Status
+### Articles
 
-Nothing is implemented yet. The design is under review in
-`project/plans/proposals/SubjectsAndCredentials.md`, and this project puts the proposal before
-the code — most of all for a package that holds credentials.
+- <doc:PassphraseStandards>
+- <doc:SigningInWithMultipleFactors>
+- <doc:ExtendingSwiftIdentity>
+- <doc:ThreatModel>
+
+### Subjects
+
+- ``Subject``
+- ``ExternalIdentity``
+
+### Credentials
+
+- ``Credential``
+- ``BearerKey``
+- ``CapabilityToken``
+- ``Passphrase``
+- ``SessionToken``
+- ``ExternalAssertion``
+- ``OneTimeCode``
+- ``FactorClass``
+
+### Resolving credentials
+
+- ``CredentialStore``
+- ``Resolution``
+- ``FileCredentialStore``
+- ``SessionStore``
+- ``MintedSession``
+- ``ThrottlingCredentialStore``
+
+### Several factors
+
+- ``Authenticator``
+- ``Authentication``
+- ``AuthenticationResolution``
+- ``Assurance``
+- ``VerifiedFactor``
+
+### Passphrases
+
+- ``PassphraseVerifier``
+- ``PassphraseCanonicalization``
+- ``PassphraseScheme``
+- ``PassphraseSchemes``
+- ``PBKDF2SHA256C1``
+- ``PBKDF2SHA256Legacy``
+- ``Argon2idC1``
+- ``Argon2id``
+- ``Pepper``
+- ``PepperedScheme``
+
+### Choosing a passphrase
+
+- ``PassphrasePolicy``
+- ``PolicyContext``
+- ``PassphraseGuidance``
+- ``PassphraseBlocklist``
+- ``BlocklistReason``
+- ``BlocklistFailure``
+- ``CommonPasswords``
+- ``BundledCommonPasswords``
+- ``ContextWords``
+- ``BreachedPasswordRange``
+
+### One-time codes
+
+- ``OneTimeCodeParameters``
+- ``OneTimeCodeVerifier``
+- ``SealingKey``
+- ``KeyFileFailure``
+
+### Throttling
+
+- ``FailureThrottle``
+- ``ThrottlePolicy``
+- ``ThrottleLedger``
+- ``ThrottleKey``
+- ``ThrottleState``
+- ``ThrottleLedgerError``
+- ``InMemoryThrottleLedger``
+- ``FileThrottleLedger``
+- ``ThrottleLedgerService``
+- ``RemoteThrottleLedger``
+- ``LedgerRequest``
+- ``LedgerResponse``
+
+### Audit
+
+- ``IdentityAudit``
+- ``IdentityEvent``
+
+### Primitives
+
+- ``ConstantTime``
+- ``Hex``
+- ``SwiftIdentity``

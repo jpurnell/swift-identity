@@ -1,0 +1,160 @@
+{
+  "source": "https://www.rfc-editor.org/rfc/rfc9106.txt",
+  "section": "5.3. Argon2id Test Vectors",
+  "sourceSha256": "855c06f060379e34285e83a217e9069b5c72e161a1e54df9af5cd88dbb231f31",
+  "retrieved": "2026-10-22",
+  "encoding": "byte strings are lowercase hex; intermediate word values are 64-bit words as printed by the RFC (block = memory block index, word = 64-bit word index within the 1 KiB block)",
+  "vectors": [
+    {
+      "type": "argon2id",
+      "version": 19,
+      "memoryKiB": 32,
+      "passes": 3,
+      "lanes": 4,
+      "tagLength": 32,
+      "password": "0101010101010101010101010101010101010101010101010101010101010101",
+      "salt": "02020202020202020202020202020202",
+      "secret": "0303030303030303",
+      "associatedData": "040404040404040404040404",
+      "preHashingDigest": "2889de487eb42ae500c0007ed9252f1069eadec40d5765b485de6dc2437a67b8546a2f0acc1a0882db8fcf74714b472e94df421a5da1112ffa11434370a1e997",
+      "intermediate": [
+        {
+          "pass": 0,
+          "words": [
+            {
+              "block": 0,
+              "word": 0,
+              "value": "6b2e09f10671bd43"
+            },
+            {
+              "block": 0,
+              "word": 1,
+              "value": "f69f5c27918a21be"
+            },
+            {
+              "block": 0,
+              "word": 2,
+              "value": "dea7810ea41290e1"
+            },
+            {
+              "block": 0,
+              "word": 3,
+              "value": "6787f7171870f893"
+            },
+            {
+              "block": 31,
+              "word": 124,
+              "value": "377fa81666dc7f2b"
+            },
+            {
+              "block": 31,
+              "word": 125,
+              "value": "50e586398a9c39c8"
+            },
+            {
+              "block": 31,
+              "word": 126,
+              "value": "6f732732a550924a"
+            },
+            {
+              "block": 31,
+              "word": 127,
+              "value": "81f88b28683ea8e5"
+            }
+          ]
+        },
+        {
+          "pass": 1,
+          "words": [
+            {
+              "block": 0,
+              "word": 0,
+              "value": "3653ec9d01583df9"
+            },
+            {
+              "block": 0,
+              "word": 1,
+              "value": "69ef53a72d1e1fd3"
+            },
+            {
+              "block": 0,
+              "word": 2,
+              "value": "35635631744ab54f"
+            },
+            {
+              "block": 0,
+              "word": 3,
+              "value": "599512e96a37ab6e"
+            },
+            {
+              "block": 31,
+              "word": 124,
+              "value": "4d4b435cea35caa6"
+            },
+            {
+              "block": 31,
+              "word": 125,
+              "value": "c582210d99ad1359"
+            },
+            {
+              "block": 31,
+              "word": 126,
+              "value": "d087971b36fd6d77"
+            },
+            {
+              "block": 31,
+              "word": 127,
+              "value": "a55222a93754c692"
+            }
+          ]
+        },
+        {
+          "pass": 2,
+          "words": [
+            {
+              "block": 0,
+              "word": 0,
+              "value": "942363968ce597a4"
+            },
+            {
+              "block": 0,
+              "word": 1,
+              "value": "a22448c0bdad5760"
+            },
+            {
+              "block": 0,
+              "word": 2,
+              "value": "a5f80662b6fa8748"
+            },
+            {
+              "block": 0,
+              "word": 3,
+              "value": "a0f9b9ce392f719f"
+            },
+            {
+              "block": 31,
+              "word": 124,
+              "value": "d723359b485f509b"
+            },
+            {
+              "block": 31,
+              "word": 125,
+              "value": "cb78824f42375111"
+            },
+            {
+              "block": 31,
+              "word": 126,
+              "value": "35bc8cc6e83b1875"
+            },
+            {
+              "block": 31,
+              "word": 127,
+              "value": "0b012846a40f346a"
+            }
+          ]
+        }
+      ],
+      "tag": "0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659"
+    }
+  ]
+}

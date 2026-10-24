@@ -1,0 +1,218 @@
+{
+  "PassphraseVerifier-151-boolean-1": {
+    "class": "Test gap — test added",
+    "why": "Skipping empty fields would read `<valid>$`, `$<valid>` or `…$$…` as a four-field verifier. Killed by \"a stored value with an empty fifth field is malformed…\" (002781d)."
+  },
+  "PassphraseVerifier-189-boolean-11": {
+    "class": "Test gap — test added",
+    "why": "The catch path in `matches` was unreached: no scheme in the tests throws from `derive`. A test scheme that always throws now must match nothing (002781d)."
+  },
+  "PassphraseVerifier-205-logical-17": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-205-relational-15": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-205-relational-16": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-206-logical-20": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-206-logical-21": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-206-relational-18": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseVerifier-206-relational-19": {
+    "class": "Test gap — test added",
+    "why": "`PassphraseVerifier.==` had no test at all in these suites. Killed by \"two verifiers are equal exactly when every stored field is\" (002781d), which varies one field at a time."
+  },
+  "PassphraseScheme-30-boolean-0": {
+    "class": "Test gap — test added",
+    "why": "The protocol's default `isBelowCurrentCost` (never) was untested; every scheme in the tests overrode it or wasn't asked. Killed by \"a scheme that declares no cost policy is never below its current cost\" (002781d)."
+  },
+  "PassphraseScheme-56-constant-4": {
+    "class": "Equivalent",
+    "why": "`Int(parameters) ?? 0` vs `?? 1`: the fallback is reached only for parameters that aren't an integer, and both 0 and 1 are below `defaultRounds`, so the answer (true) is the same. Such parameters can't reach a constructed verifier anyway: `isValid` rejects them on decode and on derive."
+  },
+  "PassphraseScheme-82-boolean-6": {
+    "class": "Test gap — test added",
+    "why": "Legacy's `isBelowCurrentCost` was only exercised where the identifier differed from the writing scheme's, which already forces an upgrade. Now tested directly and with legacy as the writing scheme (002781d)."
+  },
+  "PassphraseScheme-97-constant-11": {
+    "class": "Equivalent",
+    "why": "Asking PBKDF2-HMAC-SHA256 for 33 bytes: its first 32 are the 32-byte output (block T1 is identical), and the copy loop keeps only `derived.count` = 32 of them. Confirmed with Python's hashlib: the 33-byte output is the 32-byte one plus `06`."
+  },
+  "PassphraseScheme-104-constant-12": {
+    "class": "Equivalent",
+    "why": "The buffer's fill value: every one of its 32 bytes is overwritten by the 32-byte key before it is returned."
+  },
+  "PassphraseScheme-104-constant-13": {
+    "class": "Test gap — test added",
+    "why": "A 33-byte digest (the 32-byte key plus a zero) would still self-verify. Killed by the PBKDF2 known-answer test, whose vector comes from Python's hashlib (002781d)."
+  },
+  "PassphraseScheme-106-relational-14": {
+    "class": "Equivalent",
+    "why": "`offset < derived.count` vs `<=`: the key's buffer is 32 bytes, so `offset` never exceeds 31 and the bound is never the deciding test."
+  },
+  "PassphraseScheme-136-deletion-17": {
+    "class": "Test gap — test added",
+    "why": "\"`writing` is accepted too, whether or not it's listed\" was untested: every test listed it. Killed by \"the writing scheme is accepted even when the list leaves it out\" and the tests built on `PassphraseSchemes([], writing:)` (002781d)."
+  },
+  "Authenticator-78-relational-1": {
+    "class": "Test gap — test added",
+    "why": "Not equivalent, though it looks like it. With one credential, `disableTogether` can only change a key whose count is at the ceiling but whose flag isn't set: a last admitted attempt still being checked by another request. The mutant flags it, and that attempt's success can then no longer clear it (P22). Killed by \"P22: a lone credential turned away doesn't seal the in-flight last attempt's fate\" (6c0411e)."
+  },
+  "ThrottleLedger-58-constant-1": {
+    "class": "Equivalent",
+    "why": "The salt-length prefix's high byte, `count >> 8` vs `>> 9`: both are 0 for any salt under 256 bytes, and this package writes 16-byte salts. A stored salt of 256+ bytes would get a different, still deterministic and still per-salt key: no throttling property depends on the exact fingerprint."
+  },
+  "ThrottleLedger-59-deletion-3": {
+    "class": "Test gap — test added",
+    "why": "Without hashing the salt, every passphrase with a 16-byte salt got the same key, so rebinding inherited the old count. Killed by \"a new passphrase is a new key…\" (8b7b788)."
+  },
+  "ThrottleLedger-85-negation-5": {
+    "class": "Test gap — test added",
+    "why": "`ThrottleKey.oneTimeCode` wasn't tested directly in these suites. Killed by \"an enrolled app's key is the subject's own…\" (8b7b788)."
+  },
+  "ThrottleLedger-89-deletion-8": {
+    "class": "Test gap — test added",
+    "why": "Same as the passphrase key: without hashing the sealed bytes, a re-enrolled app inherited the old key. Killed by the same test (8b7b788)."
+  },
+  "ThrottleLedger-131-relational-14": {
+    "class": "Test gap — test added",
+    "why": "The backoff's end instant was untested. Killed by \"a backoff refuses until the instant it ends, and not at that instant\" (8b7b788)."
+  },
+  "ThrottleLedger-304-relational-30": {
+    "class": "Test gap — test added",
+    "why": "`LedgerBook.maximumEntries` had no test at all. Killed by \"a full book refuses an attempt on a new key, and admits one below the limit\" (8b7b788)."
+  },
+  "ThrottleLedger-311-relational-36": {
+    "class": "Test gap — test added",
+    "why": "The comment's \"at the ceiling, no backoff\" was untested. Killed by \"P13: the attempt that reaches the ceiling earns no backoff\" (8b7b788)."
+  },
+  "ThrottleLedger-324-arithmetic-43": {
+    "class": "Test gap — test added",
+    "why": "The limit on a multi-key failure. Killed by \"a failure involving new keys is refused if adding them all would pass the limit\" (8b7b788)."
+  },
+  "ThrottleLedger-359-early-return-69": {
+    "class": "Test gap — test added",
+    "why": "`changed` is what decides whether the file ledger writes; a success with nothing to clear reported a change. Killed by \"a success with nothing to clear changes nothing…\" (8b7b788)."
+  },
+  "ThrottleLedger-374-boolean-82": {
+    "class": "Test gap — test added",
+    "why": "Same: disabling keys already disabled reported a change, a needless write. Killed by \"disabling keys that are all disabled already changes nothing\" (8b7b788)."
+  },
+  "ThrottleLedger-375-boolean-84": {
+    "class": "Test gap — test added",
+    "why": "A real hole in coverage: the mutant skipped keys the ledger already held (enabled, with failures) and disabled only new ones. Killed by \"P13: disabling together reaches a key the ledger already has\" (8b7b788)."
+  },
+  "FileThrottleLedger-175-constant-12": {
+    "class": "Equivalent",
+    "why": "`open` returning descriptor 0 needs stdin closed; it's open in every process this runs in, so `>= 0` and `>= 1` decide alike. (In a daemon that closed stdin, the mutant would refuse a good lock file; the original is correct.)"
+  },
+  "FileThrottleLedger-186-relational-19": {
+    "class": "Untestable without fault injection — accepted, explained",
+    "why": "The `EINTR` retry bound on `flock`. Reaching it needs a signal delivered without `SA_RESTART` while `flock` blocks, a hundred times over; no test can arrange that in-process without a seam in the source."
+  },
+  "FileThrottleLedger-189-arithmetic-20": {
+    "class": "Untestable without fault injection — accepted, explained",
+    "why": "The same `EINTR` path: the counter only advances after an interrupted `flock`."
+  },
+  "FileThrottleLedger-220-relational-29": {
+    "class": "Equivalent",
+    "why": "As 175: descriptor 0 is never free."
+  },
+  "FileThrottleLedger-229-arithmetic-33": {
+    "class": "Test gap — test added",
+    "why": "Reading `maximumBytes - 1` truncated a valid ledger at exactly the limit. Killed by \"a ledger of exactly the size limit is read whole; one byte over is refused\" (8b7b788)."
+  },
+  "FileThrottleLedger-229-constant-34": {
+    "class": "Equivalent",
+    "why": "Reading up to `maximumBytes + 2` rather than `+ 1`: any file over the limit still yields more than `maximumBytes` bytes and is refused; any file within it is read whole either way."
+  },
+  "FileThrottleLedger-262-relational-40": {
+    "class": "Equivalent",
+    "why": "Rows sorted descending instead of ascending. The documented property is \"the same state is always the same bytes\", which either order gives; nothing reads the order."
+  },
+  "FileThrottleLedger-281-boolean-46": {
+    "class": "Untestable without fault injection — accepted, explained",
+    "why": "`renamed` starting true would leak the temporary file when writing or renaming fails after it was created. Only an I/O failure in that window (ENOSPC, EIO, a failed `rename`) reaches it, and every route to one a test controls fails earlier, at `open` or at `readBook`. Closing it needs a fault-injection seam in `writeBook`."
+  },
+  "FileThrottleLedger-282-negation-47": {
+    "class": "Equivalent",
+    "why": "Inverting the cleanup unlinks the temporary after a successful rename, when that name no longer exists (ENOENT, nothing removed), and skips it on failure, which is mutant 281's untestable window."
+  },
+  "FileThrottleLedger-290-deletion-50": {
+    "class": "Untestable without fault injection — accepted, explained",
+    "why": "Dropping `synchronize()` loses durability across a crash or power loss, which no in-process test observes: the page cache serves the same bytes."
+  },
+  "FileThrottleLedger-296-boolean-53": {
+    "class": "Equivalent",
+    "why": "As 282: after a successful rename, unlinking the temporary's old name removes nothing."
+  },
+  "Argon2id-364-constant-171": {
+    "class": "Equivalent",
+    "why": "`addressInput[1] = pass` instead of `[0]` (then overwritten by `lane`), leaving `[0]` at its reset 0. Argon2id uses data-independent addressing only in pass 0 (slices 0 and 1), so `pass` is always 0 when the address block is built: the block is identical."
+  },
+  "BLAKE2b-113-relational-285": {
+    "class": "Equivalent",
+    "why": "`offset < end` vs `<=`: when they're equal the loop `offset..<end` is empty and the zeroed words are returned either way."
+  },
+  "OneTimeCode-61-boolean-2": {
+    "class": "Equivalent",
+    "why": "Skipping empty fields in `totp-…` can change what `split` returns, but the initializer then requires `self.identifier == identifier`, and a canonical identifier has no empty field, so every input the mutant would newly parse is still refused."
+  },
+  "OneTimeCode-73-logical-11": {
+    "class": "Test gap — test added",
+    "why": "No test had exactly one of digits and step out of range. Killed by \"parameters are valid only when both the digits and the step are\" (40f6c3d)."
+  },
+  "OneTimeCode-80-constant-14": {
+    "class": "Test gap — test added",
+    "why": "The SHA-512 key length was untested (SHA-1 and SHA-256 were). Killed by \"an SHA-512 key is the hash's output length: 512 bits\" (40f6c3d)."
+  },
+  "OneTimeCode-104-arithmetic-26": {
+    "class": "Equivalent",
+    "why": "`offset + 3 < mac.count`: `offset` is `last & 0x0F` ≤ 15 and the shortest HMAC is 20 bytes, so the guard always passes; `offset - 3` passes too."
+  },
+  "OneTimeCode-104-constant-27": {
+    "class": "Equivalent",
+    "why": "As 104: 15 + 4 = 19 < 20, so `+ 4` passes too."
+  },
+  "OneTimeCode-104-relational-24": {
+    "class": "Equivalent",
+    "why": "As 104: 18 ≤ 20, so `<=` passes too."
+  },
+  "OneTimeCode-182-boolean-42": {
+    "class": "Test gap — test added",
+    "why": "A stored verifier with a stray `$` was accepted. Killed by \"a stored value with a stray separator is malformed\" (40f6c3d)."
+  },
+  "OneTimeCode-251-boolean-58": {
+    "class": "Test gap — test added",
+    "why": "Only SHA-1 enrollment was tested, and a 20-byte key needs no Base32 padding. Killed by \"the enrollment secret is unpadded Base32…\" with a 32-byte key (40f6c3d)."
+  },
+  "PassphrasePolicy-151-relational-9": {
+    "class": "Test gap — test added",
+    "why": "The byte cap's boundary was untested. Killed by \"exactly 1 KiB is looked at…\" (40f6c3d)."
+  },
+  "PassphrasePolicy-330-boolean-23": {
+    "class": "Test gap — test added",
+    "why": "`ContextWords.contains(_:)` (no context) was never called. Killed by \"context words, asked without a context, contain nothing\" (40f6c3d)."
+  },
+  "PassphrasePolicy-362-boolean-33": {
+    "class": "Equivalent",
+    "why": "The default argument of `PassphraseGuidance.init`'s `requiresLettersAndDigits`: its one caller, `PassphrasePolicy.guidance`, always passes it explicitly."
+  },
+  "PassphrasePolicy-374-constant-34": {
+    "class": "Test gap — test added",
+    "why": "Where the PCI line goes in the guidance was unpinned. Killed by \"the PCI profile's composition rule comes straight after the length rule\" (40f6c3d)."
+  }
+}

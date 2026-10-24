@@ -1,0 +1,34 @@
+{
+  "source": "https://www.rfc-editor.org/rfc/rfc4648.txt",
+  "sourceSHA256": "84e14418f795d503be5f34bf23ce4ebaa119e9ec7c9f667d8caeb111385b178f",
+  "vectors": [
+    {
+      "input": "",
+      "output": ""
+    },
+    {
+      "input": "f",
+      "output": "MY======"
+    },
+    {
+      "input": "fo",
+      "output": "MZXQ===="
+    },
+    {
+      "input": "foo",
+      "output": "MZXW6==="
+    },
+    {
+      "input": "foob",
+      "output": "MZXW6YQ="
+    },
+    {
+      "input": "fooba",
+      "output": "MZXW6YTB"
+    },
+    {
+      "input": "foobar",
+      "output": "MZXW6YTBOI======"
+    }
+  ]
+}

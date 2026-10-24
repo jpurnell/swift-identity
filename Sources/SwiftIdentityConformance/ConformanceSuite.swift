@@ -23,6 +23,8 @@ public struct ConformanceSuite: Sendable {
         case honeypotIsReportedToTheService = "a honeypot is named to the service and hidden from the caller"
         case throttlingAfterRepeatedFailure = "repeated passphrase failure is refused unchecked"
         case throttlingIsPerSubject = "one subject's failures do not lock out another"
+        case canonicallyEquivalentPassphrasesMatch = "a passphrase matches however its characters were encoded"
+        case algorithmIsReported = "the store reports the algorithm it verified with"
     }
 
     /// How a requirement came out.
@@ -122,9 +124,15 @@ public struct ConformanceSuite: Sendable {
         public static let externalIdentity = Capabilities(rawValue: 1 << 3)
         /// The store slows repeated passphrase failures.
         public static let throttling = Capabilities(rawValue: 1 << 4)
+        /// The store canonicalizes passphrases (NIST SP 800-63B-4's NFC), so "é" matches as one
+        /// code point or two.
+        public static let canonicalPassphrases = Capabilities(rawValue: 1 << 5)
+        /// The store reports the algorithm it verified with, through `resolveVerifying(_:)`.
+        public static let algorithmRecords = Capabilities(rawValue: 1 << 6)
         /// Everything a file-backed store is expected to do.
         public static let all: Capabilities = [
             .revocation, .honeypot, .expiry, .externalIdentity, .throttling,
+            .canonicalPassphrases, .algorithmRecords,
         ]
     }
 
@@ -143,12 +151,19 @@ public struct ConformanceSuite: Sendable {
             public let credential: any Credential
             /// Attributes the subject is expected to carry back unaltered.
             public let attributes: [String: String]
+            /// The algorithm the store should report verifying ``credential`` with, for a store
+            /// claiming ``Capabilities/algorithmRecords``.
+            public let algorithm: String?
 
             /// Describes the subject the suite will verify against.
-            public init(id: String, credential: any Credential, attributes: [String: String] = [:]) {
+            public init(
+                id: String, credential: any Credential, attributes: [String: String] = [:],
+                algorithm: String? = nil
+            ) {
                 self.id = id
                 self.credential = credential
                 self.attributes = attributes
+                self.algorithm = algorithm
             }
         }
 
@@ -221,6 +236,10 @@ public struct ConformanceSuite: Sendable {
         /// ``CapabilityToken``, which covers the built-in kinds and nothing else.
         public let activeAsAnotherKind: (any Credential)?
 
+        /// A passphrase the store recognizes for the active subject, whose secret NFC and NFD
+        /// encode differently (an accented letter, say). The suite presents it both ways.
+        public let canonicalPassphrase: Passphrase?
+
         /// Describes a store to the suite.
         ///
         /// Grouped rather than flat: this took twelve parameters when every fixture sat at the
@@ -232,7 +251,8 @@ public struct ConformanceSuite: Sendable {
             refusals: Refusals,
             throttling: Throttling? = nil,
             externalForActiveSubject: (any Credential)? = nil,
-            activeAsAnotherKind: (any Credential)? = nil
+            activeAsAnotherKind: (any Credential)? = nil,
+            canonicalPassphrase: Passphrase? = nil
         ) {
             self.capabilities = capabilities
             self.active = active
@@ -240,6 +260,7 @@ public struct ConformanceSuite: Sendable {
             self.throttling = throttling
             self.externalForActiveSubject = externalForActiveSubject
             self.activeAsAnotherKind = activeAsAnotherKind
+            self.canonicalPassphrase = canonicalPassphrase
         }
     }
 
@@ -336,8 +357,61 @@ public struct ConformanceSuite: Sendable {
                              "attributes came back altered"))
 
         results.append(await honeypotReporting(control: resolvesAnything))
+        // Before throttling, which deliberately leaves the active subject throttled: a
+        // passphrase presented after it would be refused for that reason, not for its encoding.
+        results.append(await canonicalPassphrases(control: resolvesAnything))
+        results.append(await algorithmReporting())
         results.append(contentsOf: await throttling(control: resolvesAnything))
         return Report(results: results)
+    }
+
+    /// The fixture passphrase, presented composed and decomposed: both must resolve to the
+    /// active subject. Judged first through the composed form, so a store that resolves neither
+    /// is inconclusive rather than blamed for encoding.
+    private func canonicalPassphrases(control resolvesAnything: Bool) async -> Result {
+        let requirement = Requirement.canonicallyEquivalentPassphrasesMatch
+        guard fixtures.capabilities.contains(.canonicalPassphrases) else {
+            return Result(requirement: requirement, verdict: .notClaimed, detail: "not claimed")
+        }
+        // Claimed without the fixture that would test it: the claim can't be judged, which is
+        // inconclusive. Not a gap: the protocol can express it; the fixtures didn't.
+        guard let passphrase = fixtures.canonicalPassphrase else {
+            return Result(requirement: requirement, verdict: .inconclusive,
+                          detail: "claimed, but no canonicalPassphrase fixture was supplied")
+        }
+        let composed = passphrase.secret.precomposedStringWithCanonicalMapping
+        let decomposed = passphrase.secret.decomposedStringWithCanonicalMapping
+        guard Array(composed.unicodeScalars) != Array(decomposed.unicodeScalars) else {
+            return Result(requirement: requirement, verdict: .inconclusive,
+                          detail: "the fixture's secret encodes the same both ways, so it can't tell")
+        }
+        let viaComposed = await store.subject(for: Passphrase(subjectID: passphrase.subjectID, secret: composed))
+        guard resolvesAnything, viaComposed?.id == fixtures.active.id else {
+            return Result(requirement: requirement, verdict: .inconclusive,
+                          detail: "the fixture passphrase didn't resolve even as given")
+        }
+        let viaDecomposed = await store.subject(for: Passphrase(subjectID: passphrase.subjectID, secret: decomposed))
+        return check(requirement, viaDecomposed?.id == fixtures.active.id,
+                     "the same passphrase, decomposed, was refused: the store compares raw bytes")
+    }
+
+    /// The algorithm reported for the active credential is the one the fixture names.
+    private func algorithmReporting() async -> Result {
+        let requirement = Requirement.algorithmIsReported
+        guard fixtures.capabilities.contains(.algorithmRecords) else {
+            return Result(requirement: requirement, verdict: .notClaimed, detail: "not claimed")
+        }
+        guard let expected = fixtures.active.algorithm else {
+            return Result(requirement: requirement, verdict: .inconclusive,
+                          detail: "claimed, but the active fixture names no algorithm")
+        }
+        let (resolution, algorithm) = await store.resolveVerifying(fixtures.active.credential)
+        guard case .verified = resolution else {
+            return Result(requirement: requirement, verdict: .inconclusive,
+                          detail: "the active credential didn't resolve")
+        }
+        return check(requirement, algorithm == expected,
+                     "reported \(algorithm ?? "no algorithm"), expected \(expected)")
     }
 
     /// A requirement that the store must *refuse* — meaningful only if it accepts something.

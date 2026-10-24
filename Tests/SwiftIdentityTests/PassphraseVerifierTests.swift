@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import SwiftDeterminism
 import Testing
 @testable import SwiftIdentity
@@ -63,10 +68,10 @@ struct PassphraseVerifierTests {
         let verifier = try PassphraseVerifier(for: Self.ada, using: &generator)
         let encoded = verifier.encoded
 
-        // `pbkdf2-sha256$<rounds>$<salt>$<digest>`. One field keeps the verifiers file at
+        // `pbkdf2-sha256-c1$<rounds>$<salt>$<digest>`. One field keeps the verifiers file at
         // `<subject> <kind> <verifier> <expires>` for every kind, and the algorithm prefix is
         // what lets a later, better KDF be told apart from this one rather than guessed at.
-        #expect(encoded.hasPrefix("pbkdf2-sha256$"))
+        #expect(encoded.hasPrefix("pbkdf2-sha256-c1$"))
         #expect(encoded.split(separator: "$").count == 4)
         #expect(!encoded.contains(" "))
     }
@@ -134,15 +139,28 @@ struct PassphraseVerifierTests {
 @Suite("PassphraseVerifier — the work factor is real", .serialized)
 struct PassphraseWorkFactorTests {
 
+    /// CPU time this thread has spent, not wall-clock time.
+    ///
+    /// These tests first measured `ContinuousClock`, and on a machine with a load average over a
+    /// hundred the gate caught one flipping fail→pass against an unchanged package: a scheduler
+    /// measurement, not a cost one. A thread's CPU time counts only the work the derivation did,
+    /// however long the scheduler kept it waiting, and the derivation runs synchronously on this
+    /// thread from start to finish.
+    static func threadCPUTime() -> Duration {
+        var spec = timespec()
+        guard clock_gettime(CLOCK_THREAD_CPUTIME_ID, &spec) == 0 else { return .zero }
+        return .seconds(Int64(spec.tv_sec)) + .nanoseconds(Int64(spec.tv_nsec))
+    }
+
     // TIMING: the work factor is the defence, so its cost is the assertion.
     @Test("deriving at the default cost takes real time")
     func derivationIsSlow() throws {
         var generator = SplitMix64(seed: 99)
         let passphrase = Passphrase(subjectID: "ada", secret: "correct horse battery staple")
 
-        let started = ContinuousClock.now
+        let started = Self.threadCPUTime()
         _ = try PassphraseVerifier(for: passphrase, using: &generator)
-        let elapsed = ContinuousClock.now - started
+        let elapsed = Self.threadCPUTime() - started
 
         // A floor, not a target. 600,000 rounds of PBKDF2-HMAC-SHA256 costs tens of
         // milliseconds on current hardware; anything under a millisecond means the rounds are
@@ -167,9 +185,9 @@ struct PassphraseWorkFactorTests {
         func fastest(of rounds: Int, runs: Int = 3) throws -> Duration {
             var best = Duration.seconds(3_600)
             for _ in 0..<runs {
-                let started = ContinuousClock.now
+                let started = Self.threadCPUTime()
                 _ = try PassphraseVerifier(for: passphrase, using: &generator, rounds: rounds)
-                best = min(best, ContinuousClock.now - started)
+                best = min(best, Self.threadCPUTime() - started)
             }
             return best
         }
