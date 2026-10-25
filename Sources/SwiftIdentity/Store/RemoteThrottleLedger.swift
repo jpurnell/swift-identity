@@ -2,6 +2,9 @@
 import os
 #endif
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // MARK: - Wire format
 

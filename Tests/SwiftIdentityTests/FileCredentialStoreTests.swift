@@ -1,5 +1,9 @@
 import Crypto
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import SwiftDeterminism
 import SwiftIdentityConformance

@@ -1,0 +1,31 @@
+# Linux is the only reason this exists.
+#
+# macOS is covered by the pre-commit and pre-push quality gate. Linux is built nowhere else, and
+# this package has platform-conditional code: `URLSession` needs `FoundationNetworking` there,
+# and swift-crypto's `SymmetricKey` is not `Sendable` where CryptoKit's is. Neither shows on a
+# Mac. 0.7.0 did not compile on Linux at all, and the failure was found by a consumer's CI
+# (swift-oauth's) rather than this package's own. This workflow closes that gap on the side
+# that owns the code.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    # Matches the tools version this package declares.
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v5
+      - name: Preflight
+        run: swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test
