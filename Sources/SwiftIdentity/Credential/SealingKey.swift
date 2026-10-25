@@ -14,7 +14,8 @@ import Foundation
 ///
 /// The file is 32 bytes, owner-only. Anything else is refused when it's loaded, the same
 /// startup-fatal rule the file store applies to its own files.
-public struct SealingKey: Sendable {
+// Justification: `key` is an immutable `let` and SymmetricKey is a value type; swift-crypto on Linux does not mark it Sendable, CryptoKit on Apple platforms does.
+public struct SealingKey: @unchecked Sendable {
 
     /// Why a sealing key can't be used: the key-file rules every secret key here shares.
     public typealias Failure = KeyFileFailure

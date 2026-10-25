@@ -38,8 +38,13 @@ struct BreachedPasswordRangeTests {
 
     static func response(_ request: URLRequest, status: Int) -> HTTPURLResponse {
         let url = request.url ?? URL(fileURLWithPath: "/")
-        return HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)
-            ?? HTTPURLResponse()
+        // Failable only for an unusable status; the tests pass real ones. `HTTPURLResponse()`
+        // is no fallback: Foundation on Linux has no such initializer.
+        guard let response = HTTPURLResponse(
+            url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil) else {
+            preconditionFailure("A test asked for an HTTP response with status \(status)")
+        }
+        return response
     }
 
     /// A blocklist whose fetch answers with `body` and `status`, recording each request.

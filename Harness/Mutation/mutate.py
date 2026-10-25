@@ -345,17 +345,26 @@ signal.signal(signal.SIGTERM, _on_signal)
 signal.signal(signal.SIGHUP, _on_signal)
 
 
+def relative(output: str) -> str:
+    """Compiler output with this checkout's absolute path and the home directory taken out, so
+    a recorded result says nothing about the machine it ran on."""
+    output = output.replace(str(ROOT), "<package>").replace(str(Path.home()), "~")
+    # Output is truncated before it's stored, which can cut a path anywhere; a temporary
+    # directory is named for the user, so any left whole or in part is replaced too.
+    return re.sub(r"/(?:private/)?(?:tmp|var/folders)/\S*", "<tmp>", output)
+
+
 def run(cmd: list[str], timeout: int) -> tuple[int | None, str, float]:
     start = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, start_new_session=True)
     try:
         out, _ = proc.communicate(timeout=timeout)
-        return proc.returncode, out, time.monotonic() - start
+        return proc.returncode, relative(out), time.monotonic() - start
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
         out, _ = proc.communicate()
-        return None, out or "", time.monotonic() - start
+        return None, relative(out or ""), time.monotonic() - start
 
 
 def tests_ran(output: str) -> int:

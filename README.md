@@ -39,7 +39,7 @@ same subject, or identity is only true on the web.
 
 ## Status
 
-**0.7.0**, pre-1.0, in use. On top of 0.6's subjects, credentials, stores, sessions, audit and
+**0.7.1**, pre-1.0, in use. On top of 0.6's subjects, credentials, stores, sessions, audit and
 conformance suite:
 
 - **Several factors.** `Authenticator` requires every credential presented together to prove one

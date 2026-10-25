@@ -12,7 +12,8 @@ import Foundation
 /// the verifiers. **It isn't hardware-protected here**: a file is what every platform this
 /// package targets can share. With it, a copy of the verifiers file alone is useless to a
 /// guesser, which is the point.
-public struct Pepper: Sendable {
+// Justification: `key` is an immutable `let` and SymmetricKey is a value type; swift-crypto on Linux does not mark it Sendable, CryptoKit on Apple platforms does.
+public struct Pepper: @unchecked Sendable {
     let key: SymmetricKey
 
     /// A fingerprint, for the scheme identifier: the first 8 bytes of SHA-256 of the key, in hex.

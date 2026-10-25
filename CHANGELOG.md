@@ -9,6 +9,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.1] — 2026-10-25
+
+SwiftIdentity builds on Linux. 0.7.0 did not: the failure was found by swift-oauth's Linux CI,
+a consumer's, because this package had no Linux build of its own.
+
+### Fixed
+- `Pepper` and `SealingKey` hold a `SymmetricKey`, which swift-crypto does not mark `Sendable`
+  on Linux (CryptoKit does), so under Swift 6 strict concurrency they failed to compile there.
+  Both are now `@unchecked Sendable` over an immutable `let`, with the justification beside it.
+- `RemoteThrottleLedger` used `URLSession` and `URLRequest` without importing
+  `FoundationNetworking`, which Linux needs; `BreachedPasswordRange` already did. Its tests too.
+
+### Added
+- A Linux CI job (`.github/workflows/ci.yml`, `swift:6.2`: build and test), so a Linux break is
+  found here rather than in a consumer.
+
+
 ## [0.7.0] — 2026-10-23
 
 The assurance and passphrase amendment (`AssuranceFactorsAndStandardPassphrases.md`, approved
@@ -563,7 +580,8 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.7.1...HEAD
+[0.7.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.1
 [0.7.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.0
 [0.6.3]: https://github.com/jpurnell/swift-identity/releases/tag/0.6.3
 [0.6.2]: https://github.com/jpurnell/SwiftIdentity/releases/tag/0.6.2
