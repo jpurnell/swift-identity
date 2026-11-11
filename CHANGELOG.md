@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.8.0] — 2026-10-28
+
+### Added
+- `SealingKey(data:)` and `Pepper(data:)`: either key from its 32 bytes, for one kept somewhere
+  other than an owner-only file, such as the Apple Keychain through SwiftKeychain's
+  `KeychainKey.loadOrCreate`. The size rule is the file loaders' (`KeyFileFailure.wrongSize`);
+  the owner-only rule is a file's and doesn't apply. A pepper from bytes has the identifier the
+  same pepper from its file has, so digests already stored still name it. `Pepper`'s DocC says
+  what the Keychain changes against NIST SP 800-63B-4 §3.1.1.2's "hardware-protected area" and
+  what it doesn't: encrypted at rest, in memory in use.
+
 ## [0.7.1] — 2026-10-25
 
 SwiftIdentity builds on Linux. 0.7.0 did not: the failure was found by swift-oauth's Linux CI,
@@ -580,7 +591,8 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.7.1...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.8.0
 [0.7.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.1
 [0.7.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.0
 [0.6.3]: https://github.com/jpurnell/swift-identity/releases/tag/0.6.3

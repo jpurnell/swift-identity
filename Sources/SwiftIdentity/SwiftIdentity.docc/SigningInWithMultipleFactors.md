@@ -35,6 +35,10 @@ let uri = try verifier.enrollmentURI(issuer: "Household Vault", account: "ada", 
 print(uri.hasPrefix("otpauth://totp/"))
 ```
 
+On an Apple platform the key can live in the Keychain instead of a file: `SealingKey(data:)` takes
+its 32 bytes, which SwiftKeychain's `KeychainKey.loadOrCreate` reads or creates. The same goes for
+``Pepper/init(data:)``.
+
 ## Verifying both
 
 The file store reads `totp` lines when it's given the sealing key and a throttle, and refuses to

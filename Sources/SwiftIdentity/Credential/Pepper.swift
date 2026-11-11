@@ -25,7 +25,19 @@ public struct Pepper: @unchecked Sendable {
     /// - Parameter url: The pepper file.
     /// - Throws: ``KeyFileFailure``, or the error reading the file.
     public init(contentsOf url: URL) throws {
-        let data = try KeyFile.read(url)
+        try self.init(data: KeyFile.read(url))
+    }
+
+    /// A pepper from its 32 bytes, for one kept somewhere other than a file, such as the Apple
+    /// Keychain (SwiftKeychain's `KeychainKey.loadOrCreate` returns exactly this). On Apple
+    /// platforms the data-protection Keychain keeps it encrypted at rest under keys the Secure
+    /// Enclave guards, and a device-only item isn't in backups; it is still in memory while it is
+    /// used, so it isn't "used within a hardware-protected area" either.
+    ///
+    /// - Parameter data: The key, 32 bytes.
+    /// - Throws: ``KeyFileFailure/wrongSize(_:)``.
+    public init(data: Data) throws {
+        let data = try KeyFile.sized(data)
         key = SymmetricKey(data: data)
         identifier = SHA256.hash(data: data).prefix(8).map(Hex.byte).joined()
     }

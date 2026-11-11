@@ -30,6 +30,18 @@ public struct SealingKey: @unchecked Sendable {
         key = SymmetricKey(data: try KeyFile.read(url))
     }
 
+    /// A sealing key from its 32 bytes, for one kept somewhere other than a file, such as the
+    /// Apple Keychain (SwiftKeychain's `KeychainKey.loadOrCreate` returns exactly this).
+    ///
+    /// The owner-only rule is a file's, so it isn't checked here; keeping the bytes away from
+    /// the identity store is the caller's part.
+    ///
+    /// - Parameter data: The key, 32 bytes.
+    /// - Throws: ``KeyFileFailure/wrongSize(_:)``.
+    public init(data: Data) throws {
+        key = SymmetricKey(data: try KeyFile.sized(data))
+    }
+
     /// Writes a new sealing key, owner-only, from a generator you supply.
     ///
     /// Never overwrites: replacing a sealing key orphans every key sealed under it.

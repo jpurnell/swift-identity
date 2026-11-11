@@ -23,7 +23,11 @@ enum KeyFile {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let mode = (attributes[.posixPermissions] as? Int) ?? 0o777
         guard mode & 0o077 == 0 else { throw KeyFileFailure.readableByOthers }
-        let data = try Data(contentsOf: url)
+        return try sized(Data(contentsOf: url))
+    }
+
+    /// `data`, if it is 32 bytes: the rule for a key wherever it came from.
+    static func sized(_ data: Data) throws -> Data {
         guard data.count == 32 else { throw KeyFileFailure.wrongSize(data.count) }
         return data
     }
