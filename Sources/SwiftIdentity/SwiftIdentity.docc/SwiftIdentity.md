@@ -39,6 +39,7 @@ from the factor classes that did — never from what a caller claims. Passphrase
 - <doc:SigningInWithMultipleFactors>
 - <doc:ExtendingSwiftIdentity>
 - <doc:ThreatModel>
+- <doc:RunningABearerKeyService>
 
 ### Subjects
 
@@ -61,6 +62,7 @@ from the factor classes that did — never from what a caller claims. Passphrase
 - ``CredentialStore``
 - ``Resolution``
 - ``FileCredentialStore``
+- ``ReloadingCredentialStore``
 - ``SessionStore``
 - ``MintedSession``
 - ``ThrottlingCredentialStore``
@@ -105,6 +107,13 @@ from the factor classes that did — never from what a caller claims. Passphrase
 - ``OneTimeCodeVerifier``
 - ``SealingKey``
 - ``KeyFileFailure``
+
+### Administering a file store
+
+- ``IdentityDirectory``
+- ``BearerKeyMinter``
+- ``MintedKey``
+- ``SecureIdentityFiles``
 
 ### Throttling
 

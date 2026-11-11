@@ -39,7 +39,7 @@ same subject, or identity is only true on the web.
 
 ## Status
 
-**0.8.0**, pre-1.0, in use. On top of 0.6's subjects, credentials, stores, sessions, audit and
+**0.9.0**, pre-1.0, in use. 0.9 added `ReloadingCredentialStore`, `IdentityDirectory`, `BearerKeyMinter` and `SecureIdentityFiles`, so a service can add, rotate and revoke keys while it runs (see the DocC article *Running a bearer-key service*). On top of 0.6's subjects, credentials, stores, sessions, audit and
 conformance suite:
 
 - **Several factors.** `Authenticator` requires every credential presented together to prove one

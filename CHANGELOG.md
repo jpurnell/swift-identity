@@ -9,6 +9,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.9.0] — 2026-11-10
+
+Reloading, administering and minting for the file credential store. Design: `project/plans/proposals/FileIdentityAdministration.md`. Additive: no existing type or signature changes.
+
+### Added
+- **`ReloadingCredentialStore`** (an actor, a `CredentialStore`): holds a `FileCredentialStore`, looks at the two files' stamps at most once per interval (one second by default) on a resolve, and adopts a changed pair that loads. **A pair that does not load is never adopted**: the last good store keeps serving and the refusal is reported once through a callback, and again only if the files change again. Startup is still fatal. `reload()` looks at once.
+- **`IdentityDirectory`**: create, add a subject, add a further key to a subject (rotation by overlap, with an optional expiry), revoke a subject, set a status (including `honeypot`), revoke one key by its digest prefix (eight or more characters), and list subjects and keys (the digest's first eight characters and the expiry, never a key). **Every change is loaded through `FileCredentialStore` in a staging directory before the live files are replaced**, atomically, roster first; files that already do not load are never written over; a key's text is in no file.
+- **`BearerKeyMinter` and `MintedKey`**: 256 random bits as base64url with an optional prefix, and the digest the verifiers file holds. **The caller supplies the random number generator** (`mint(using:)`; there is no `mint()` that reaches for the system's): the package's rule that anything minting randomness is deterministic under test. A service passes `SystemRandomNumberGenerator()` once, at its own entry point; `IdentityDirectory`'s `create`, `add` and `addKey` take it too. `MintedKey` prints neither the key nor any part of it in `description` or `debugDescription`.
+- **`SecureIdentityFiles`**: owner-only checks (an absolute path that does not climb, not a symbolic link, the right kind, owned by this user, not readable by group or others), modification `Stamp`s, `makeDirectory` at 0700 whatever the umask, and `replace`, which writes a new file created exclusively and without following a link, flushes it and renames it over the target. These are the dashboard's `SecureFiles` and the file-writing half of its `TenantAdministration`, generalised and with their own error type; the dashboard has not moved onto them.
+- DocC article "Running a bearer-key service".
+- Tests: 38 new (`BearerKeyMinterTests` 5, `SecureIdentityFilesTests` 9, `IdentityDirectoryTests` 14, `ReloadingCredentialStoreTests` 10), on real files in temporary directories.
+
+### Not tested here
+- Behaviour under a real service's request rate: checked after the diagnostics hub adopts it.
+
 ## [0.8.0] — 2026-10-28
 
 ### Added
