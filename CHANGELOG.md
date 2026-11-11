@@ -7,7 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+## [0.10.0] — 2026-11-11
+
+Closes the gaps between 0.9.0's `ReloadingCredentialStore` and what a consumer that throttles and holds sessions needs. Design record: `project/plans/proposals/ReloadingCredentialStore.md`. Additive: every 0.9.0 call site compiles and behaves as before.
+
+### Added
+- `ReloadingCredentialStore.init` takes `throttle`, `sealingKey` and `schemes` and passes them to every store it rebuilds. The same `FailureThrottle` goes into each, so **failure counts survive a swap**; before this, adopting the type meant giving up throttling.
+- `ReloadingCredentialStore.subject(id:)`: synchronous (nonisolated), for consumers with a synchronous closure. It does the same interval check `resolve` does, so a revocation reaches a held session at the next check with nothing resolving.
+- `ReloadingCredentialStore` conforms to `ThrottlingCredentialStore` (`throttleKey(for:)`) and forwards `resolveVerifying(_:)`, so the algorithm is no longer dropped.
+
+### Changed
+- A parse that fails on a changed pair is tried once more before it is reported as a refusal (a reader can catch a file mid-write). Refusals still reach `onReload` once per change of the files; the reasoning is in the type's documentation. No `IdentityAudit` event was added: `IdentityEvent.Outcome` is `CaseIterable` and consumers map every case, so a new case would change what 0.9.0 callers see.
+- `FileCredentialStore`'s documentation points to `ReloadingCredentialStore` where it says the files are read once.
+- The state a look reads and a swap writes now lives behind one lock rather than in the actor, so the synchronous lookups and `resolve` see one whole generation.
+
+### Tests
+- 7 new (`ReloadingCredentialStoreGapTests`; 425 in all): throttle survives a swap, synchronous subject follows a replacement and a revocation, rename-replace noticed by inode alone, torn read retried and adopted, two failures refused once, 8 tasks resolving across 60 swaps never see a mixed generation, startup still throws with a throttle and the store is a `ThrottlingCredentialStore`.
+
+### Not tested here
+- `sealingKey` and `schemes` pass-through (the same parameter plumbing as `throttle`, but no test builds a one-time-code or non-standard-scheme store through a swap).
+- `SIGHUP`: not implemented; `reload()` is the check-now hook.
+- A real consumer (VaultMCP) on the type.
 
 ## [0.9.1] — 2026-11-10
 
@@ -613,7 +633,8 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.9.1...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.10.0
 [0.9.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.1
 [0.9.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.0
 [0.8.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.8.0

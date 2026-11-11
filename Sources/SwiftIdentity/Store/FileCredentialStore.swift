@@ -9,6 +9,9 @@ import Darwin
 
 /// Subjects and their credentials, kept in two files and read once at startup.
 ///
+/// This type is immutable: a change to the files has no effect on it. A service that must notice an enrolment, a rotation or a
+/// revocation while it runs wraps it in ``ReloadingCredentialStore``, which rebuilds it with the same options.
+///
 /// Two files rather than one, so the roster can be read and reviewed without exposing
 /// verifiers: `subjects` says who exists, `verifiers` says what proves them. Only the second
 /// is sensitive, and only the second is ever hard to hand to someone.
