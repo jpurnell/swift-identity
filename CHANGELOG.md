@@ -9,6 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.9.1] — 2026-11-10
+
+### Added
+- **`IdentityDirectory.adopt(_:key:)`**: adds a subject whose first key already exists (an app built with it, so it cannot change), keeping only the key's SHA-256 digest; makes the directory if there are no identity files yet. Refused, with nothing written: a key that is not 16 to 128 visible ASCII characters without a space (`AdministrationFailure.invalidKey`), a taken id (`alreadyExists`). This is what lets the diagnostics hub move the keys it issued from a plaintext file into the identity files without rebuilding Spinner.
+- `AdministrationFailure.invalidKey`. An added case is a source break for a `switch` that has no `default`; none is known (the type shipped in 0.9.0, a few hours earlier, and nothing outside the package switches on it), which is why this is a patch release and not 0.10.0.
+- Tests: 5 new in `IdentityDirectoryTests` (creates, stores no key, adds beside others, refuses a duplicate, refuses four kinds of bad key).
+
 ## [0.9.0] — 2026-11-10
 
 Reloading, administering and minting for the file credential store. Design: `project/plans/proposals/FileIdentityAdministration.md`. Additive: no existing type or signature changes.
@@ -606,7 +613,9 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.9.1...HEAD
+[0.9.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.1
+[0.9.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.0
 [0.8.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.8.0
 [0.7.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.1
 [0.7.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.7.0

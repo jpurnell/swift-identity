@@ -12,6 +12,8 @@ The files hold digests only. A key is shown once, when it is minted.
 
 ``IdentityDirectory/create(first:using:)`` makes the directory (owner-only) with a first subject and its first key; ``IdentityDirectory/add(_:using:)`` adds another subject. Each returns a ``MintedKey``: hand its `key` to whoever needs it, once, and keep nothing. Neither description of the type prints it. These take the random number generator as a parameter: a service passes `SystemRandomNumberGenerator()` once, at its own entry point, and a test passes a seeded one.
 
+If the keys already exist and cannot change (an app built with one), ``IdentityDirectory/adopt(_:key:)`` adds the subject with that key, keeping only its digest, so a service can move to these files without rebuilding what carries the key.
+
 To **rotate**, add a second key to the subject with ``IdentityDirectory/addKey(for:expires:using:)``. Both verify. Give the new key to the client, let the old one expire (or remove it with ``IdentityDirectory/revokeKey(digestPrefix:)``) once nothing presents it. No request fails in between.
 
 ### Stopping a key, and catching one that leaked

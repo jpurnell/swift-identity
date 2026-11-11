@@ -42,7 +42,16 @@ public struct BearerKeyMinter: Sendable {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         let key = prefix + encoded
-        let digest = SHA256.hash(data: Data(key.utf8)).map { Hex.byte($0) }.joined()
-        return MintedKey(key: key, digest: digest)
+        return MintedKey(key: key, digest: Self.digest(of: key))
+    }
+
+    /// The SHA-256 digest the verifiers file keeps for a key (64 hexadecimal characters).
+    static func digest(of key: String) -> String {
+        SHA256.hash(data: Data(key.utf8)).map { Hex.byte($0) }.joined()
+    }
+
+    /// Whether a key that already exists may be adopted: 16 to 128 visible ASCII characters, none of them a space.
+    static func isAdoptable(_ key: String) -> Bool {
+        (16...128).contains(key.utf8.count) && key.utf8.allSatisfy { $0 > 0x20 && $0 < 0x7F }
     }
 }

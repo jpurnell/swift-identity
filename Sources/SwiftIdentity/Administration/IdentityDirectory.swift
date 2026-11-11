@@ -60,6 +60,8 @@ public enum AdministrationFailure: Error, Equatable, Sendable {
     case files(SecureIdentityFiles.Failure)
     /// The files, as they are or as the change would leave them, would not load through ``FileCredentialStore``.
     case wouldNotLoad(FileCredentialStore.Failure)
+    /// A key offered for adoption was not 16 to 128 visible ASCII characters without a space.
+    case invalidKey
 }
 
 /// Adds, rotates, revokes and lists the subjects and keys in a directory of the two files ``FileCredentialStore`` reads.
@@ -97,20 +99,41 @@ public struct IdentityDirectory: Sendable {
         first: SubjectSpec, using generator: inout Generator
     ) throws(AdministrationFailure) -> MintedKey {
         try Self.validate(first)
-        let subjects = path + "/" + FileCredentialStore.subjectsFile
-        let verifiers = path + "/" + FileCredentialStore.verifiersFile
-        if SecureIdentityFiles.stamp(of: path) == nil {
-            do { try SecureIdentityFiles.makeDirectory(path) } catch { throw .files(error) }
-        } else {
-            do { try SecureIdentityFiles.requireDirectory(path) } catch { throw .files(error) }
-            guard SecureIdentityFiles.stamp(of: subjects) == nil, SecureIdentityFiles.stamp(of: verifiers) == nil else {
-                throw .alreadyExists(path)
-            }
-        }
+        try prepareForFirstSubject()
         let minted = minter.mint(using: &generator)
         let state = State(subjects: Self.subjectsHeader + Self.subjectLine(first), verifiers: Self.verifiersHeader + Self.keyLine(first.id, minted, first.expires))
         try commit(state, replacing: [.subjects, .verifiers])
         return minted
+    }
+
+    /// Adds a subject whose first key already exists, such as the key an app was built with, keeping only its digest. If there are no
+    /// identity files yet this makes the directory, as ``create(first:using:)`` does.
+    ///
+    /// This is how a service moves keys it already issued into the files without rebuilding what carries them. The key is read, hashed
+    /// and forgotten: neither file holds its text.
+    /// - Parameters:
+    ///   - spec: The subject.
+    ///   - key: The existing key: 16 to 128 visible ASCII characters, no space.
+    /// - Throws: ``AdministrationFailure/invalidKey``, ``AdministrationFailure/alreadyExists(_:)`` if the id is taken,
+    ///   ``AdministrationFailure/invalidName(_:)``, or a refusal of the files. Nothing is written when one is thrown.
+    public func adopt(_ spec: SubjectSpec, key: String) throws(AdministrationFailure) {
+        try Self.validate(spec)
+        guard BearerKeyMinter.isAdoptable(key) else { throw .invalidKey }
+        let adopted = MintedKey(key: key, digest: BearerKeyMinter.digest(of: key))
+        let isFirst = SecureIdentityFiles.stamp(of: path + "/" + FileCredentialStore.subjectsFile) == nil
+            && SecureIdentityFiles.stamp(of: path + "/" + FileCredentialStore.verifiersFile) == nil
+        if isFirst {
+            try prepareForFirstSubject()
+            let state = State(
+                subjects: Self.subjectsHeader + Self.subjectLine(spec), verifiers: Self.verifiersHeader + Self.keyLine(spec.id, adopted, spec.expires))
+            try commit(state, replacing: [.subjects, .verifiers])
+            return
+        }
+        var state = try load()
+        guard !state.subjectLines.contains(where: { $0.id == spec.id }) else { throw .alreadyExists(spec.id) }
+        state.subjects += Self.subjectLine(spec)
+        state.verifiers += Self.keyLine(spec.id, adopted, spec.expires)
+        try commit(state, replacing: [.subjects, .verifiers])
     }
 
     /// Adds a subject with its first key.
@@ -210,6 +233,20 @@ public struct IdentityDirectory: Sendable {
                 keys: state.keyLines.filter { $0.subject == subject.id }.map {
                     KeyListing(digestPrefix: String($0.digest.prefix(8)), expires: $0.expires.flatMap { formatter.date(from: $0) })
                 })
+        }
+    }
+
+    /// Makes the directory if it is absent, or accepts an existing one that holds no identity files yet.
+    private func prepareForFirstSubject() throws(AdministrationFailure) {
+        let subjects = path + "/" + FileCredentialStore.subjectsFile
+        let verifiers = path + "/" + FileCredentialStore.verifiersFile
+        if SecureIdentityFiles.stamp(of: path) == nil {
+            do { try SecureIdentityFiles.makeDirectory(path) } catch { throw .files(error) }
+        } else {
+            do { try SecureIdentityFiles.requireDirectory(path) } catch { throw .files(error) }
+            guard SecureIdentityFiles.stamp(of: subjects) == nil, SecureIdentityFiles.stamp(of: verifiers) == nil else {
+                throw .alreadyExists(path)
+            }
         }
     }
 

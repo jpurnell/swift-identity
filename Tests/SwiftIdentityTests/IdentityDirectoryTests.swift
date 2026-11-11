@@ -208,4 +208,71 @@ struct IdentityDirectoryTests {
         }
         #expect(try Support.read(f.path + "/subjects").contains("spinner"))
     }
+
+    // MARK: adopt
+
+    private let existingKey = "an-app-key-0123456789-abcdefghijklmnop"
+
+    @Test("adopt makes the directory when it is absent, and the key it was given verifies as the subject")
+    func adoptCreates() async throws {
+        let path = try Support.absentDirectory()
+        let cleanup = (path as NSString).deletingLastPathComponent
+        defer { Support.remove(cleanup) }
+        try IdentityDirectory(path: path).adopt(SubjectSpec(id: "spinner", kind: .service), key: existingKey)
+        #expect(Support.mode(of: path) == 0o700)
+        #expect(Support.mode(of: path + "/verifiers") == 0o600)
+        guard case .verified(let subject) = try await resolution(path, existingKey) else {
+            Issue.record("the adopted key did not verify")
+            return
+        }
+        #expect(subject.id == "spinner")
+        #expect(subject.kind == .service)
+    }
+
+    @Test("adopt keeps only the key's digest: its text is in neither file")
+    func adoptStoresNoKey() throws {
+        let path = try Support.absentDirectory()
+        let cleanup = (path as NSString).deletingLastPathComponent
+        defer { Support.remove(cleanup) }
+        try IdentityDirectory(path: path).adopt(SubjectSpec(id: "spinner", kind: .service), key: existingKey)
+        #expect(!(try Support.read(path + "/subjects")).contains(existingKey))
+        #expect(!(try Support.read(path + "/verifiers")).contains(existingKey))
+    }
+
+    @Test("adopt adds a subject beside the ones there, and the minted key and the adopted key both verify")
+    func adoptAdds() async throws {
+        let f = try fixture()
+        defer { Support.remove(f.cleanup) }
+        try f.directory.adopt(SubjectSpec(id: "winetaster", kind: .service), key: existingKey)
+        guard case .verified(let adopted) = try await resolution(f.path, existingKey),
+              case .verified(let minted) = try await resolution(f.path, f.first.key) else {
+            Issue.record("a key did not verify")
+            return
+        }
+        #expect(adopted.id == "winetaster")
+        #expect(minted.id == "spinner")
+    }
+
+    @Test("adopt refuses an id that is taken, and changes nothing")
+    func adoptRefusesDuplicate() throws {
+        let f = try fixture()
+        defer { Support.remove(f.cleanup) }
+        let before = try Support.read(f.path + "/verifiers")
+        #expect(throws: AdministrationFailure.alreadyExists("spinner")) {
+            try f.directory.adopt(SubjectSpec(id: "spinner", kind: .service), key: existingKey)
+        }
+        #expect(try Support.read(f.path + "/verifiers") == before)
+    }
+
+    @Test("adopt refuses a key that is too short, too long, or has a space or a control character, and writes nothing", arguments: [
+        "short", String(repeating: "k", count: 129), "has a space in it 0123456789", "control\u{7}character-0123456789"])
+    func adoptRefusesBadKeys(key: String) throws {
+        let path = try Support.absentDirectory()
+        let cleanup = (path as NSString).deletingLastPathComponent
+        defer { Support.remove(cleanup) }
+        #expect(throws: AdministrationFailure.invalidKey) {
+            try IdentityDirectory(path: path).adopt(SubjectSpec(id: "spinner", kind: .service), key: key)
+        }
+        #expect(!FileManager.default.fileExists(atPath: path))
+    }
 }
