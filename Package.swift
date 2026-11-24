@@ -44,7 +44,7 @@ let package = Package(
         // Credential digests. Present from the first line of code, so that "nothing is stored
         // in the clear" is true of the reference implementation too — a reference that cheats
         // teaches the wrong thing to whoever copies it.
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "5.1.2"),
         // Seeded generators for the test targets, and only for them. Absent from every
         // non-test target on purpose: reproducibility is `SplitMix64`'s guarantee, and
         // unpredictability is the contract of everything this package mints.

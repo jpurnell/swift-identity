@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-23
+
+### Changed
+- **swift-crypto minimum is now 5.1.2** (`from: "5.1.2"`; was `from: "3.0.0"`, which allowed only 3.x). A crypto release is usually a security fix, so the owner's rule is to stay current, and 5.1.2 is the newest release. **A package that depends on SwiftIdentity 0.11.0 must itself allow swift-crypto 5.1.2 or later.** No source change; the 425 tests pass on 5.1.2.
+
 ## [0.10.0] — 2026-11-11
 
 Closes the gaps between 0.9.0's `ReloadingCredentialStore` and what a consumer that throttles and holds sessions needs. Design record: `project/plans/proposals/ReloadingCredentialStore.md`. Additive: every 0.9.0 call site compiles and behaves as before.
@@ -633,7 +638,8 @@ passphrase is safely stored, because no store yet accepts one.
 
 The proposal came before the code, which is why the code it produced is the shape it is.
 
-[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/jpurnell/swift-identity/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.11.0
 [0.10.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.10.0
 [0.9.1]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.1
 [0.9.0]: https://github.com/jpurnell/swift-identity/releases/tag/0.9.0
