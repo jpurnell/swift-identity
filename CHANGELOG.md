@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-11-24
+
+### Added
+- **`IdentityDirectory.issuePassphrase(for:rounds:using:)`: the directory can now issue a passphrase.** Until now it could verify one (`FileCredentialStore`) but not make one: `IdentityDirectory` minted bearer keys only, so the only way to create a passphrase credential was to write the verifier line by hand in the store's format. It generates a secret (256 random bits as base64url), hashes it with PBKDF2-SHA256 under `rounds` (at least `PassphraseVerifier.roundFloor`, `defaultRounds` by default) and writes only the verifier. A new subject, or a directory with no identity files yet, is created with this one passphrase and **no bearer key**; an existing subject's passphrase is **replaced** (the old secret stops working, every other line in both files is left as it was); a **revoked subject is not revived**. Replacing also lifts a disabled passphrase: the throttle's key is derived from the verifier's salt, so a new passphrase is a new binding and the failure count starts again. A separate process can run it against the directory a running server reads, and a `ReloadingCredentialStore` picks it up. The secret comes back once in an `IssuedPassphrase`, which does not print it in either description. For the owner-secret approver in SwiftOAuthServer ("`enroll --secret`"). 10 tests; two mutants killed (the old line kept; the cost floor dropped).
+- `AdministrationFailure.roundsBelowFloor(Int)`: a passphrase asked for under the cost floor (the value is the floor). **A new case on a public enum:** a package that switches exhaustively over `AdministrationFailure` needs a case for it.
+
 ## [0.11.0] — 2026-11-23
 
 ### Changed

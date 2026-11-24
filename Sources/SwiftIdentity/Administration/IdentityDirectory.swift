@@ -60,8 +60,26 @@ public enum AdministrationFailure: Error, Equatable, Sendable {
     case files(SecureIdentityFiles.Failure)
     /// The files, as they are or as the change would leave them, would not load through ``FileCredentialStore``.
     case wouldNotLoad(FileCredentialStore.Failure)
-    /// A key offered for adoption was not 16 to 128 visible ASCII characters without a space.
+    /// A key offered for adoption was not 16 to 128 visible ASCII characters without a space. Also what a generated passphrase
+    /// that could not be hashed reports, which only a fault of this package's own could cause.
     case invalidKey
+    /// A passphrase was asked for under a cost below ``PassphraseVerifier/roundFloor``; the value is that floor.
+    case roundsBelowFloor(Int)
+}
+
+/// A passphrase the directory generated, and the one place its text is ever handed over.
+///
+/// The text is shown to the person who asked for it once, and nowhere else: neither description prints it, and the files hold only its
+/// slow-hashed verifier.
+public struct IssuedPassphrase: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// The passphrase itself: 256 random bits as base64url. Hand it over once; it is not stored anywhere.
+    public let secret: String
+
+    /// A description that never names the secret.
+    public var description: String { "IssuedPassphrase(secret: <redacted>)" }
+
+    /// The same, so a debugger or `String(reflecting:)` cannot print the secret either.
+    public var debugDescription: String { description }
 }
 
 /// Adds, rotates, revokes and lists the subjects and keys in a directory of the two files ``FileCredentialStore`` reads.
@@ -169,6 +187,59 @@ public struct IdentityDirectory: Sendable {
         state.verifiers += Self.keyLine(subject, minted, expires)
         try commit(state, replacing: [.verifiers])
         return minted
+    }
+
+    /// Generates a passphrase for a subject and keeps only its verifier: the server makes the secret, so nobody has to choose, type or
+    /// hand-write one.
+    ///
+    /// - **A new subject** (or a directory with no identity files yet) is created with this one passphrase and **no bearer key**.
+    /// - **An existing subject's passphrase is replaced**, not added to: the old secret stops working, and every other line in both
+    ///   files is left exactly as it was. Replacing is also how a disabled passphrase is lifted, since the throttle's key is derived
+    ///   from the verifier's salt, so a new passphrase is a new binding and its failure count starts again (see ``ThrottleKey``).
+    /// - **A revoked subject is not revived**: its status is left alone and its new secret is refused, like its old one.
+    /// - The secret is 256 random bits as base64url (the same strength as a bearer key, which is not guessable, so there is no policy
+    ///   to meet), hashed with PBKDF2-SHA256 under `rounds`. It is returned once, in an ``IssuedPassphrase`` that does not print it.
+    ///
+    /// A separate process can run this against the directory a running server reads: a ``ReloadingCredentialStore`` picks the change up.
+    ///
+    /// - Parameters:
+    ///   - spec: The subject, as ``create(first:using:)`` takes it. Its kind and attributes are used only if the subject is new.
+    ///   - rounds: The PBKDF2 cost; at least ``PassphraseVerifier/roundFloor``, and ``PassphraseVerifier/defaultRounds`` by default.
+    ///   - generator: The source of the secret's and the salt's randomness: `SystemRandomNumberGenerator()` for a real one.
+    /// - Throws: ``AdministrationFailure/invalidName(_:)``, ``AdministrationFailure/roundsBelowFloor(_:)``, or a refusal of the files.
+    ///   Nothing is written when one is thrown.
+    public func issuePassphrase<Generator: RandomNumberGenerator>(
+        for spec: SubjectSpec, rounds: Int = PassphraseVerifier.defaultRounds, using generator: inout Generator
+    ) throws(AdministrationFailure) -> IssuedPassphrase {
+        try Self.validate(spec)
+        guard rounds >= PassphraseVerifier.roundFloor else { throw .roundsBelowFloor(PassphraseVerifier.roundFloor) }
+        let secret = BearerKeyMinter().mint(using: &generator).key
+        let verifier: PassphraseVerifier
+        do {
+            verifier = try PassphraseVerifier(for: Passphrase(subjectID: spec.id, secret: secret), using: &generator, rounds: rounds)
+        } catch {
+            throw .invalidKey
+        }
+        let line = "\(spec.id) \(Passphrase.kind) \(verifier.encoded) -\n"
+        let isFirst = SecureIdentityFiles.stamp(of: path + "/" + FileCredentialStore.subjectsFile) == nil
+            && SecureIdentityFiles.stamp(of: path + "/" + FileCredentialStore.verifiersFile) == nil
+        if isFirst {
+            try prepareForFirstSubject()
+            try commit(
+                State(subjects: Self.subjectsHeader + Self.subjectLine(spec), verifiers: Self.verifiersHeader + line),
+                replacing: [.subjects, .verifiers])
+            return IssuedPassphrase(secret: secret)
+        }
+        var state = try load()
+        let isNew = !state.subjectLines.contains(where: { $0.id == spec.id })
+        if isNew { state.subjects += Self.subjectLine(spec) }
+        state.verifiers = Self.terminated(
+            state.verifiers.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline).filter { raw in
+                let fields = raw.split(whereSeparator: \.isWhitespace)
+                return !(fields.count >= 2 && fields[0] == spec.id && fields[1] == Passphrase.kind)
+            }.joined(separator: "\n")) + line
+        try commit(state, replacing: isNew ? [.subjects, .verifiers] : [.verifiers])
+        return IssuedPassphrase(secret: secret)
     }
 
     /// Revokes a subject: its status becomes `revoked`, so every key of it refuses. Revoking twice is not an error.
